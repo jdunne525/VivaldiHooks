@@ -34,10 +34,10 @@ if($vivpath -eq $null) {
     $outhtml = @()
     $html |% {
       $line = $_
-      if($line.tolower().contains('<script src="jdhooks.js"></script>')) {
+      if($line.tolower().contains('<script src="load_hooks.js"></script>')) {
         return
       } elseif($line.tolower().contains('<script src="bundle.js"></script>')) {
-        $outhtml += '    <script src="jdhooks.js"></script>'
+        $outhtml += '    <script src="load_hooks.js"></script>'
       } 
       $outhtml += $_
     }  

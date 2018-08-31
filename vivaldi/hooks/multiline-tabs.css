@@ -19,7 +19,7 @@
     width: auto !important;
 }
 .tab-strip > span > .tab-position > .tab:not(.pinned){
-    width: 220px !important;
+    width: 150px !important;
 }
 .tab-strip > span > .tab-position > .tab.pinned{
     width: 30px !important;

@@ -1,5 +1,9 @@
 # VivaldiHooks
 
+8/30/2018 jdunne - jdhooks.js has been broken for a long time.  I created load_hooks.js, which is a stupid simple version that just loads the .js file
+directly without any fancy stuff.  The only hook I use is multi-line-tabs.css.  If you want to load a different one, just edit load_hooks.js and add it.
+Good luck.
+
 ## About
 VivaldiHooks is a set of hooks/scripts for Vivaldi browser modding.
 
