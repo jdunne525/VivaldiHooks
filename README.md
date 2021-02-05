@@ -1,4 +1,5 @@
 # VivaldiHooks
+[![License: WTFPL](https://img.shields.io/badge/License-WTFPL-brightgreen.svg)](http://www.wtfpl.net/about/)
 
 8/30/2018 jdunne - jdhooks.js has been broken for a long time.  I created load_hooks.js, which is a stupid simple version that just loads the .js file
 directly without any fancy stuff.  The only hook I use is multi-line-tabs.css.  If you want to load a different one, just edit load_hooks.js and add it.
@@ -6,14 +7,9 @@ Good luck.
 
 ## About
 VivaldiHooks is a set of hooks/scripts for Vivaldi browser modding.
+The main one - `jdhooks.js` - controlls mods loading and provides mod developers a way to change behaviour of Vivaldi internal components.
 
-It's something close to [VivaldiPatches](https://github.com/justdanpo/VivaldiPatches) but it has some advantages:
-
-- there is no need to add every mod (css/javascript) into **browser.html**: only **jdhooks.js** should be added there, other files are loaded automatically
-- hook scripts are almost Vivaldi-version independent -> there is no need to port mods to every new Vivaldi version
-- there is no need to interact with minified code; this means more complex mods may be done easier; also javascript mods look much more readable than patches
-
-But some of mods cannot be implemented as hooks, so I don't bury VivaldiPatches.
+See Wiki for [hooks descriptions](https://github.com/justdanpo/VivaldiHooks/wiki/Hooks) or [developers' howto](https://github.com/justdanpo/VivaldiHooks/wiki/Howto-dev).
 
 ## Installation
 ### Automatic (Windows only)
@@ -25,10 +21,9 @@ You may specify a path in a command line:
 
     installhooks.bat C:\programz\Vivaldi-snapshots\1.5.609.8\Application
     installhooks.bat "C:\some path with spaces\Vivaldi\Application"
+    installhooks.bat -nowait C:\programz\Vivaldi-snapshots\1.5.609.8\Application
 
 Another easy way: drag Vivaldi directory and drop it on **installhooks.bat**.
-
-~~Note: **browser.html** will be overwritten.~~
 
 ### Manual
 
@@ -60,10 +55,6 @@ The easiest way to "uninstall"/disable VivaldiHooks is to delete **{instdir}\viv
 
 ![bookmarks-button.png](screenshots/bookmarks-button.png)
 
-### [extensions-buttons-menu-settings.js](vivaldi/hooks/extensions-buttons-menu-settings.js)
-
-![extensions-buttons-menu-settings.png](screenshots/extensions-buttons-menu-settings.png)
-
 ### [go-button.js](vivaldi/hooks/go-button.js)
 
 ![go-button.png](screenshots/go-button.png)
@@ -80,22 +71,6 @@ The easiest way to "uninstall"/disable VivaldiHooks is to delete **{instdir}\viv
 
 ![speeddial-shortcuts.png](screenshots/speeddial-shortcuts.png)
 
-### [zoom-buttons.js](vivaldi/hooks/zoom-buttons.js)
-
-![zoom-buttons.png](screenshots/zoom-buttons.png)
-
-### [searchfield-current-engine-icon.js](vivaldi/hooks/searchfield-current-engine-icon.js)
-
-![searchfield-current-engine-icon.png](screenshots/searchfield-current-engine-icon.png)
-
-### [devtools.js](vivaldi/hooks/devtools.js)
-
-![devtools.png](screenshots/devtools.png)
-
 ### [jdhooks-startup-settings.js](vivaldi/hooks/jdhooks-startup-settings.js)
 
 ![jdhooks-startup-settings.png](screenshots/jdhooks-startup-settings.png)
-
-### [speeddial-items-geometry.js](vivaldi/hooks/speeddial-items-geometry.js)
-
-![speeddial-items-geometry.png](screenshots/speeddial-items-geometry.png)

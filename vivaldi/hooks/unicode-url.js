@@ -1,13 +1,31 @@
-//Unicode domains decoder
+//International Domain Names decoder
 
-vivaldi.jdhooks.hookModule("_decodeDisplayURL", function(moduleInfo, exportsInfo) {
-    var url = vivaldi.jdhooks.require("url");
-    var punycode = vivaldi.jdhooks.require("punycode");
+vivaldi.jdhooks.hookModuleExport("_decodeDisplayURL", "formatUrl", oldFn => {
+    const url = vivaldi.jdhooks.require("url")
+    const punycode = vivaldi.jdhooks.require("punycode")
 
-    vivaldi.jdhooks.hookMember(exportsInfo.parent, exportsInfo.name, null, function(hookData, inputUrl) {
-        var hostName = url.parse(hookData.retValue).hostname + "";
-        var decodedHostName = punycode.toUnicode(hostName);
-        return hookData.retValue.replace(hostName, decodedHostName).replace(/ /g, "%20");
-    });
+    return arg => {
+        const newUrl = oldFn(arg)
+        let parsed = url.parse(newUrl)
+        if (parsed.host) {
+            parsed.host = punycode.toUnicode(parsed.host)
+            return url.format(parsed)
+        }
+        return newUrl
+    }
+})
 
-});
+vivaldi.jdhooks.hookClass("urlfield_UrlBar", oldClass => {
+    const punycode = vivaldi.jdhooks.require("punycode")
+    return class extends oldClass {
+        static getDerivedStateFromProps(props) {
+            if (props.urlFragments.tld && props.urlFragments.tld.indexOf("xn--") === 0) {
+
+                if (props.urlFragments.host) props.urlFragments.host = punycode.toUnicode(props.urlFragments.host)
+                props.urlFragments.tld = punycode.toUnicode(props.urlFragments.tld)
+            }
+
+            return oldClass.getDerivedStateFromProps(props)
+        }
+    }
+})

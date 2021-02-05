@@ -1,834 +1,799 @@
-//var result = vivaldi.jdhooks.require(moduleName)
-//vivaldi.jdhooks.hookClass(className, function(class))
-//vivaldi.jdhooks.hookMember(object, memberName, function(hookData, {oldarglist}), function(hookData, {oldarglist}))
-//vivaldi.jdhooks.hookModule(moduleName, function(moduleInfo, exportsInfo))
-//vivaldi.jdhooks.hookSettingsWrapper(moduleName, function(constructor, settingsArray))
+//var result = vivaldi.jdhooks.require(moduleName, exportName)
+//vivaldi.jdhooks.hookClass(className, class => newClass)
+//vivaldi.jdhooks.hookModuleExport(moduleName, exportName, export => newExport)
 //vivaldi.jdhooks.onUIReady(function())
+//vivaldi.jdhooks.addStyle(style)
+//vivaldi.jdhooks.insertWatcher(cls, {settings:[], prefs:[]})
 
-(function() {
+(function () {
+    const jdhooks_module_index = 'jdhooks_module'
+    const jdhooks_ui_ready_event = 'jdhooks.uiready'
 
-    const fastProcessModules = true;
+    const fastProcessModules = true
 
-    vivaldi.jdhooks = {};
+    let jdhooks = vivaldi.jdhooks = { _hooks: {}, _hookDescriptions: {}, _moduleMap: {}, _moduleNames: {} }
 
     //---------------------------------------------------------------------
     //API
 
-    //hookModule(moduleName, function(moduleInfo));
-    var hookModule = vivaldi.jdhooks.hookModule = function(moduleName, newfn) {
-        var moduleIndex = vivaldi.jdhooks._moduleMap[moduleName];
-        var oldfn = vivaldi.jdhooks._modules[moduleIndex];
-        vivaldi.jdhooks._modules[moduleIndex] = function(moduleInfo, exports, nrequire) {
-            oldfn(moduleInfo, exports, nrequire);
+    //addStyle(style)
+    vivaldi.jdhooks.addStyle = (style, description) => {
+        let s = document.createElement("style")
+        s.innerHTML = style
+        if (description) s.setAttribute("description", description)
+        document.head.appendChild(s)
+    }
 
-            if (moduleInfo.exports.hasOwnProperty("a"))
-                newfn(moduleInfo, {
-                    exports: moduleInfo.exports.a,
-                    parent: moduleInfo.exports,
-                    name: "a"
-                });
-            else
-            if (moduleInfo.exports.hasOwnProperty("default"))
-                newfn(moduleInfo, {
-                    exports: moduleInfo.exports.default,
-                    parent: moduleInfo.exports,
-                    name: "default"
-                });
-            else
-                newfn(moduleInfo, {
-                    exports: moduleInfo.exports,
-                    parent: moduleInfo,
-                    name: "exports"
-                });
+    //hookModule(moduleName, function(moduleInfo))
+    const hookModule = vivaldi.jdhooks.hookModule = (moduleName, newfn) => {
+        console.warn(`hookModule is deprecated and will be removed in the nearest future (called for module ${moduleName})`)
+
+        const moduleIndex = vivaldi.jdhooks._moduleMap[moduleName].idx
+        const oldfn = vivaldi.jdhooks._modules[moduleIndex]
+        vivaldi.jdhooks._modules[moduleIndex] = (moduleInfo, exports, nrequire) => {
+            oldfn(moduleInfo, exports, nrequire)
+
+            if (typeof moduleInfo.exports === "object") {
+                const keys = Object.keys(moduleInfo.exports)
+                if (keys.length === 1) switch (keys[0]) {
+                    case "a":
+                        return moduleInfo.exports = { ...moduleInfo.exports, ...{ a: newfn(moduleInfo, moduleInfo.exports.a) } }
+                    case "default":
+                        return moduleInfo.exports = { ...moduleInfo.exports, ...{ default: newfn(moduleInfo, moduleInfo.exports.default) } }
+                }
+            }
+            return moduleInfo.exports = newfn(moduleInfo, moduleInfo.exports)
         }
-    };
+    }
+
+    //hookModuleExport(moduleName, exportName, export => newExport)
+    const hookModuleExport = vivaldi.jdhooks.hookModuleExport = (moduleName, exportName, cb) => {
+        const moduleIndex = vivaldi.jdhooks._moduleMap[moduleName].idx
+        const oldfn = vivaldi.jdhooks._modules[moduleIndex]
+        vivaldi.jdhooks._modules[moduleIndex] = (moduleInfo, exports, nrequire) => {
+            oldfn(moduleInfo, exports, nrequire)
+
+            const fn = vivaldi.jdhooks._moduleMap[moduleName].cached[exportName] || trySignatures(moduleName, exportName, moduleInfo.exports)
+
+            return moduleInfo.exports = fn.updated(moduleInfo.exports, cb(fn.get(moduleInfo.exports)))
+        }
+    }
 
     //hookClass(className, function(class))
-    var hookClassList = {};
-    vivaldi.jdhooks._unusedClassHooks = {}; //stats
+    let hookClassList = {}
+    jdhooks._unusedClassHooks = {} //stats
 
-    var hookClass = vivaldi.jdhooks.hookClass = function(className, cb) {
-        if ("undefined" === typeof hookClassList[className]) hookClassList[className] = [];
-        hookClassList[className].push(cb);
-
-        vivaldi.jdhooks._unusedClassHooks[className] = true;
-    };
+    const hookClass = vivaldi.jdhooks.hookClass = (className, cb) => {
+        hookClassList[className] = hookClassList[className] || []
+        hookClassList[className].push(cb)
+        vivaldi.jdhooks._unusedClassHooks[className] = true
+    }
 
     //hookMember(object, memberName, function(hookData,oldarglist), function(hookData,oldarglist))
-    var hookMember = vivaldi.jdhooks.hookMember = function(obj, memberName, cbBefore = null, cbAfter = null) {
+    const hookMember = vivaldi.jdhooks.hookMember = function (obj, memberName, cbBefore = null, cbAfter = null) {
+        console.warn("hookMember is deprecated and will be removed in the nearest future")
+
         if (!obj.hasOwnProperty(memberName))
-            throw "jdhooks.hookMember: wrong member name " + memberName;
+            throw `jdhooks.hookMember: wrong member name ${memberName}`
 
-        var oldMember = obj[memberName];
-        obj[memberName] = function() {
+        return {
+            ...obj, ...{
+                [memberName]: () => {
 
-            var abortHook = false;
-            var hookData = {
-                arguments: arguments,
-                abort: function() {
-                    abortHook = true
+                    let abortHook = false
+                    let hookData = {
+                        arguments: arguments,
+                        abort: () => { abortHook = true }
+                    }
+
+                    let args = [].slice.call(hookData.arguments, 0);
+                    [].unshift.call(args, hookData)
+
+                    if (cbBefore)
+                        hookData.retValue = cbBefore.apply(this, args)
+
+                    if (abortHook)
+                        return hookData.retValue
+
+                    hookData.retValue = obj[memberName].apply(this, hookData.arguments)
+
+                    if (cbAfter)
+                        hookData.retValue = cbAfter.apply(this, args)
+
+                    return hookData.retValue
                 }
-            };
-
-            var args = [].slice.call(hookData.arguments, 0);
-            [].unshift.call(args, hookData);
-
-            if (cbBefore)
-                hookData.retValue = cbBefore.apply(this, args);
-
-            if (abortHook)
-                return hookData.retValue;
-
-            hookData.retValue = oldMember.apply(this, hookData.arguments);
-
-            if (cbAfter)
-                hookData.retValue = cbAfter.apply(this, args);
-
-            return hookData.retValue;
-        };
-    };
-
-    //vivaldi.jdhooks.hookSettingsWrapper(moduleName, function(constructor, settingsArray))
-    var hookSettingsWrapperList = {};
-    var hookSettingsWrapper = vivaldi.jdhooks.hookSettingsWrapper = function(moduleName, cb) {
-        var moduleIndex = vivaldi.jdhooks._moduleMap[moduleName];
-        if ("undefined" === typeof hookSettingsWrapperList[moduleIndex]) hookSettingsWrapperList[moduleIndex] = [];
-        hookSettingsWrapperList[moduleIndex].push(cb);
+            }
+        }
     }
 
     //onUIReady(function)
-    vivaldi.jdhooks.onUIReady = function(cb) {
-        document.addEventListener("jdhooks.uiready", cb);
-    };
+    vivaldi.jdhooks.onUIReady = _ => document.addEventListener(jdhooks_ui_ready_event, _)
 
+    //insertWatcher(cls, params)
+    const insertWatcher = vivaldi.jdhooks.insertWatcher = (cls, params) => {
+        const vivaldiSettings = vivaldi.jdhooks.require("vivaldiSettings")
+        const PrefsCache = vivaldi.jdhooks.require("PrefsCache")
+        return class extends cls {
+            constructor(...e) {
+                super(...e)
+
+                this.state = this.state || {}
+                if (params.settings) this.state.jdVivaldiSettings = {
+                    ...this.state.jdVivaldiSettings || {},
+                    ...vivaldiSettings.getKeysSync(params.settings)
+                }
+                if (params.prefs) this.state.jdPrefs = {
+                    ...this.state.jdPrefs || {},
+                    ...PrefsCache.getList(params.prefs)
+                }
+                this.changeSettingsHandler = this.changeSettingsHandler.bind(this)
+                this.changePrefsHandler = this.changePrefsHandler.bind(this)
+            }
+            changeSettingsHandler(oldValue, newValue, key) {
+                this.setState(state => ({ jdVivaldiSettings: { ...state.jdVivaldiSettings, [key]: newValue } }))
+            }
+            changePrefsHandler(oldValue, newValue, key) {
+                this.setState(state => ({ jdPrefs: { ...state.jdPrefs, [key]: newValue } }))
+            }
+            componentDidMount() {
+                if (super.componentDidMount) super.componentDidMount()
+                for (const key of params.settings || []) vivaldiSettings.addListener(key, this.changeSettingsHandler)
+                for (const key of params.prefs || []) PrefsCache.addListener(key, this.changePrefsHandler)
+            }
+            componentWillUnmount() {
+                for (const key of params.prefs || []) PrefsCache.removeListener(key, this.changePrefsHandler)
+                for (const key of params.settings || []) vivaldiSettings.removeListener(key, this.changeSettingsHandler)
+                if (super.componentWillUnmount) super.componentWillUnmount()
+            }
+        }
+    }
     //---------------------------------------------------------------------
+    const defaultGetFn = {
+        get: o => o,
+        updated: (_, v) => v
+    }
+    function trySignatures(module, exportName, obj) {
+        function getFnByMemberName(memberName) {
+            return {
+                get: o => o[memberName],
+                updated: (o, v) => { return { ...o, [memberName]: v } }
+            }
+        }
+
+        let moduleMap = jdhooks._moduleMap[module]
+        if (obj[exportName])
+            return moduleMap.cached[exportName] = getFnByMemberName(exportName)
+
+        if (exportName == "default" && (Object.keys(obj).length == 1) && obj.a)
+            return moduleMap.cached[exportName] = getFnByMemberName("a")
+
+        if (!moduleMap.exports) {
+            if (Object.keys(obj).length > 1 && obj.b) {
+                console.log(`jdhooks: please check module "${module}" exports`, { exports: obj })
+            }
+            return moduleMap.cached[exportName] = defaultGetFn
+        }
+
+        const exportSig = moduleMap.exports[exportName]
+        if (!exportSig)
+            throw `jdhooks: unknown export ${exportName} for module ${module}`
+
+        function checkExport(exp, exportSig, fn) {
+            let found = false
+            if (typeof exp === "object") {
+                found = exportSig.every(i => exp[i])
+            } else {
+                const expString = exp.toString()
+                found = exportSig.every(i => -1 < expString.indexOf(i))
+            }
+            return found ? fn : undefined
+        }
+
+        const rootExports = checkExport(obj, exportSig, defaultGetFn)
+        if (rootExports) return moduleMap.cached[exportName] = rootExports
+
+        for (const i in obj) {
+            const checkedExport = checkExport(obj[i], exportSig, getFnByMemberName(i))
+            if (checkedExport) return moduleMap.cached[exportName] = checkedExport
+        }
+
+        return undefined
+    }
 
     function loadHooks(callback) {
-        chrome.runtime.getPackageDirectoryEntry(function(dir) {
+        chrome.runtime.getPackageDirectoryEntry(_ => _.createReader().readEntries(outerDirItems => {
+            let pendingscripts = {}
 
-                dir.createReader().readEntries(function(dirItems) {
-
-                    var pendingscripts = {};
-
-                    function checkFinished() {
-                        if (0 === Object.keys(pendingscripts).length) {
-                            //all scripts are a loaded
-                            callback();
-                        }
-                    }
-
-                    var dirItem = dirItems.find(function(dirItem) {
-                        return dirItem.isDirectory && dirItem.name == "hooks"
-                    });
-
-                    if (!dirItem) {
-                        checkFinished();
-                    } else {
-                        dirItem.createReader().readEntries(function(dirItems) {
-
-                            chrome.storage.local.get("JDHOOKS_STARTUP", function(cfg) {
-                                if (undefined === cfg.JDHOOKS_STARTUP) cfg.JDHOOKS_STARTUP = {};
-                                if (undefined === cfg.JDHOOKS_STARTUP.defaultLoad) cfg.JDHOOKS_STARTUP.defaultLoad = true;
-                                if (undefined === cfg.JDHOOKS_STARTUP.scripts) cfg.JDHOOKS_STARTUP.scripts = {};
-
-                                vivaldi.jdhooks._hooks = {};
-
-                                for (var i in dirItems) {
-                                    var dirItem = dirItems[i];
-                                    var Elem;
-
-                                    var fileExt = dirItem.name.split('.').pop().toUpperCase();
-
-                                    if ((fileExt !== "JS") && (fileExt !== "CSS"))
-                                        continue;
-
-                                    var shouldBeLoaded = undefined === cfg.JDHOOKS_STARTUP.scripts[dirItem.name] ? cfg.JDHOOKS_STARTUP.defaultLoad : cfg.JDHOOKS_STARTUP.scripts[dirItem.name];
-                                    if (dirItem.name === "jdhooks-startup-settings.js") shouldBeLoaded = true;
-
-                                    vivaldi.jdhooks._hooks[dirItem.name] = shouldBeLoaded;
-
-                                    if (!shouldBeLoaded)
-                                        continue;
-
-                                    if (fileExt === "JS") {
-
-                                        Elem = document.createElement("script");
-                                        Elem.src = "hooks/" + dirItem.name;
-                                        pendingscripts[Elem.src] = true;
-
-                                        Elem.onload = function(e) {
-                                            delete pendingscripts[this.src];
-                                            checkFinished();
-                                        };
-                                    }
-
-                                    if (fileExt === "CSS") {
-
-                                        Elem = document.createElement("link");
-                                        Elem.href = "hooks/" + dirItem.name;
-                                        Elem.rel = "stylesheet";
-
-                                    }
-
-                                    document.head.appendChild(Elem);
-                                }
-                                checkFinished();
-                            }); //storage get
-                        });
-                    }
-
-                })
-            }) //getPackageDirectoryEntry
-    };
-
-    //---------------------------------------------------------------------
-
-    function makeSignatures() {
-        var jsxNames = {
-            "ApplySearchFilter": "applySearchFilter.js",
-
-            "ActionItem": "page-actions/ActionItem.jsx",
-            "ActionLog": "ActionLog.jsx",
-            "AddressBar": "AddressBar.jsx",
-            "AddressBarDropdown": "AddressBarDropdown.jsx",
-            "AddWebPanelButton": "addWebPanelButton.jsx",
-            "AttachmentContainer": "notesAttachmentContainer.jsx",
-            "AttachmentItem": "notesAttachment.jsx",
-            "AudioIcon": "AudioIcon.jsx",
-            "autoupdate": "Autoupdate.jsx",
-            "BackgroundTaskStatus": "BackgroundTaskStatus.jsx",
-            "BackgroundTaskStatusList": "BackgroundTaskStatusList.jsx",
-            "BiscuitSettings": "BiscuitMode.jsx",
-            "BlockedContentNotificator": "BlockedContentNotificator.jsx",
-            "BookmarkBar": "BookmarkBar.jsx",
-            "BookmarkEditItem": "BookmarkEditItem.jsx",
-            "BookmarksBar": "bookmarksbar.jsx",
-            "BookmarksBarItem": "bookmarksbarItem.jsx",
-            "BookmarkSettings": "BookmarkSettings.jsx",
-            "BookmarksFoldersFlatList": "bookmarksfoldersflatlist.jsx",
-            "BookmarksManager": "bookmarks-manager.jsx",
-            "BookmarksPanel": "bookmarksPanel.jsx",
-            "BookmarkTree": "BookmarkTree.jsx",
-            "capture": "Capture.jsx",
-            "CaptureImages": "CaptureImages.jsx",
-            "ClearBrowsingHistory": "ClearBrowsingHistory.jsx",
-            "ClearBrowsingHistoryDialog": "ClearBrowsingHistoryDialog.jsx",
-            "ColorPicker": "ColorPicker.jsx",
-            "ConfigureSingleKeyShortcut": "ConfigureSingleKeyShortcuts.jsx",
-            "ConfirmationDlg": "ConfirmationDlg.jsx",
-            "ConfirmOpenBookmarksDialog": "confirmOpenBookmarksDialog.jsx",
-            "ContactPhotoPicker": "ContactPhotoPicker.jsx",
-            "ContactsPanel": "ContactsPanel.jsx",
-            "ContactTree": "ContactTree.jsx",
-            "ContactView": "ContactView.jsx",
-            "CookieItem": "CookieItem.jsx",
-            "CookieManager": "cookieManager.jsx",
-            "CookieManagerDialog": "cookieManagerDlg.jsx",
-            "CookieSettings": "cookieSettings.jsx",
-            "CreateBookmark": "createbookmark.jsx",
-            "CreateSearchEngine": "createSearchEngine.jsx",
-            "CreateSearchEngineDlg": "createSearchEngineDlg.jsx",
-            "DefaultGlobalZoom": "defaultGlobalZoom.jsx",
-            "DialogRenderWrapper": "dialogRenderWrapper.jsx",
-            "dockedDevTools": "dockedDevTools.jsx",
-            "DownloadDialog": "downloadDialog.jsx",
-            "DownloadItem": "DownloadItem.jsx",
-            "DownloadPanel": "DownloadPanel.jsx",
-            "DownloadSettings": "downloads.jsx",
-            "DownloadTree": "downloadTree.jsx",
-            "ExperimentItem": "ExperimentItem.jsx",
-            "Experiments": "experiments.jsx",
-            "ExtensionActionItem": "ExtensionActionItem.jsx",
-            "ExtensionActionPopup": "ExtensionActionPopup.jsx",
-            "ExtensionActionToolbar": "ExtensionActionToolbar.jsx",
-            "FindInPage": "find-in-page.jsx",
-            "FocusTrap": "FocusTrap.jsx",
-            "FolderIcon": "FolderIcon.jsx",
-            "Fonts": "fonts.jsx",
-            "FullKeyAccess": "FullKeyAccess.jsx",
-            "FullscreenInfoBubble": "fullscreeninfobubble.jsx",
-            "FullscreenSettings": "fullscreen.jsx",
-            "HistoryFolder": "HistoryFolder.jsx",
-            "HistoryItem": "history/HistoryItem.jsx",
-            "HistoryManager": "HistoryManager.jsx",
-            "HistoryMoreInfo": "HistoryMoreInfo.jsx",
-            "HistoryPanel": "HistoryPanel.jsx",
-            "HistorySearch": "HistorySearch.jsx",
-            "HistorySetting": "HistorySetting.jsx",
-            "HistoryStoreSubscription": "HistoryStoreSubscription.jsx",
-            "HistoryTree": "HistoryTree.jsx",
-            "HomePageSetting": "homePageSetting.jsx",
-            "HueIntegration": "HueIntegration.jsx",
-            "ImportBookmarks": "importBookmarks.jsx",
-            "InfoBar": "InfoBar.jsx",
-            "InsertThemeWrapper": "InsertTheme.jsx",
-            "InternalPage": "InternalPage.jsx",
-            "JavascriptDialog": "javascriptDialog.jsx",
-            "Keyboard": "Keyboard.jsx",
-            "LanguageSetting": "languageSetting.jsx",
-            "LocationPermissionDialog": "locationPermissionDialog.jsx",
-            "LocationPermissionNotificator": "locationPermissionNotificator.jsx",
-            "MailAccountForm": "MailAccountForm.jsx",
-            "MailAccountRemovalDlg": "MailAccountRemovalDlg.jsx",
-            "MailAccountSaveDlg": "MailAccountSaveDlg.jsx",
-            "MailBar": "MailBar.jsx",
-            "MailBarComposer": "MailBarComposer.jsx",
-            "MailBarList": "MailBarList.jsx",
-            "MailComposer": "MailComposer.jsx",
-            "MailCustomFlagDlg": "MailCustomFlagDlg.jsx",
-            "MailDetail": "MailDetail.jsx",
-            "MailEntryHorizontal": "MailEntryHorizontal.jsx",
-            "MailEntryVertical": "MailEntryVertical.jsx",
-            "MailFilterManager": "MailFilterManager.jsx",
-            "MailFilterManagerEditor": "MailFilterManagerEditor.jsx",
-            "MailForms": "mailForms.jsx",
-            "MailMessage": "MailMessage.jsx",
-            "MailPanel": "MailPanel.jsx",
-            "MailPanelNode": "MailPanelNode.jsx",
-            "MailSearch": "MailSearch.jsx",
-            "MailSearchList": "MailSearchList.jsx",
-            "MailSearchOptions": "MailSearchOptions.jsx",
-            "MailSettings": "mailSettings.jsx",
-            "MailView": "MailView.jsx",
-            "Main": "main.jsx",
-            "MainBar": "MainBar.jsx",
-            "MainDialog": "mainDialog.jsx",
-            "MediaPermissionDialog": "mediaPermissionDialog.jsx",
-            "MediaPermissionNotificator": "mediaPermissionNotificator.jsx",
-            "Menu": "menu/Menu.jsx",
-            "MenuItem": "MenuItem.jsx",
-            "MenuType": "menuType.jsx",
-            "MessageBody": "MessageBody.jsx",
-            "MessageHeader": "MessageHeader.jsx",
-            "Modal": "Modal.jsx",
-            "MouseGestures": "MouseGestures.jsx",
-            "NavigationButton": "NavigationButton.jsx",
-            "NetworkSettings": "networkSettings.jsx",
-            "NotesEditor": "NotesEditor.jsx",
-            "NotesPanel": "notesPanel.jsx",
-            "NotesTree": "notesTree.jsx",
-            "NotificationPermissionDialog": "notificationPermissionDialog.jsx",
-            "NotificationPermissionNotificator": "notificationPermissionNotificator.jsx",
-            "OmniDropdown": "omnidropdown.jsx",
-            "OpenSessionDialog": "openSessionDialog.jsx",
-            "PageActionChooser": "PageActionChooser.jsx",
-            "PageloadProgress": "PageloadProgress.jsx",
-            "Panel": "components/panels/panel.jsx",
-            "PanelSettings": "settings/panel/Panel.jsx",
-            "PopupBlockerDialog": "popupblockerDialog.jsx",
-            "PopupBlockerNotificator": "popupblockerNotificator.jsx",
-            "PopupContents": "PopupContents.jsx",
-            "PopupWindow": "popup.jsx",
-            "Privacy": "privacy.jsx",
-            "QCHistoryItem": "quickCommands/HistoryItem.jsx",
-            "QCTitleItem": "quickCommands/TitleItem.jsx",
-            "QuickCommandItem": "quickCommands/CommandItem.jsx",
-            "QuickCommandList": "QuickCommandList.jsx",
-            "QuickCommands": "quickCommands.jsx",
-            "QuickCommandSearch": "QuickCommandSearch.jsx",
-            "RadioGroup": "RadioGroup.jsx",
-            "ReaderModePanel": "ReaderModePanel.jsx",
-            "SavedPasswordItem": "savedPasswordItem.jsx",
-            "SavedPasswords": "savedPasswords.jsx",
-            "SaveSessionDialog": "saveSessionDialog.jsx",
-            "SearchEngines": "searchEngines.jsx",
-            "SearchField": "searchfield.jsx",
-            "SessionTree": "SessionTree.jsx",
-            "Settings": "settings/Settings.jsx",
-            "SetVivaldiDefaultBrowserDlg": "setVivaldiDefaultBrowserDlg.jsx",
-            "SetVivaldiDefaultSettings": "SetVivaldiDefaultSettings.jsx",
-            "ShortCutEditSetting": "KeyboardShortcutEditSetting.jsx",
-            "ShowKeyboardShortcuts": "showKeyboardShortcuts.jsx",
-            "SiteInfoButton": "SiteInfoButton.jsx",
-            "SlideBar": "SlideBar.jsx",
-            "SmoothScrollingSetting": "smoothscrolling.jsx",
-            "SortingSelector": "SortingSelector.jsx",
-            "SpecificSession": "specificSession.jsx",
-            "SpecificSessionItem": "specificSessionItem.jsx",
-            "StartPage": "components/startpage/StartPage.jsx",
-            "StartPageSettings": "settings/startpage/StartPage.jsx",
-            "StartPageTopMenu": "startpage-topmenu.jsx",
-            "StartupSettingsSection": "startupSettingsSection.jsx",
-            "StartupSettings": "settings/startup/StartupSetting", //todo: replace with "settings/startup/StartupSettings.jsx"
-            "StatusInfo": "StatusInfo.jsx",
-            "StatusToolbar": "StatusToolbar.jsx",
-            "sync": "sync.jsx",
-            "SyncDialog": "SyncDialog.jsx",
-            "Tab": "Tab.jsx",
-            "TabActivation": "tabActivation.jsx",
-            "TabBar": "TabBar.jsx",
-            "TabCycling": "tabCycling.jsx",
-            "TabMuting": "tabMuting.jsx",
-            "TabOpen": "tabOpen.jsx",
-            "TabPageSetting": "TabPage.jsx",
-            "TabPinning": "tabPinning.jsx",
-            "TabPositionPreview": "TabPositionPreview.jsx",
-            "TabProgressIndicator": "TabProgressIndicator.jsx",
-            "TabSelection": "tabSelection.jsx",
-            "TabsSettingSection": "tabsSettingSection.jsx",
-            "TabStacking": "tabStacking.jsx",
-            "TabStrip": "TabStrip.jsx",
-            "TabToLinksSetting": "TabToFocus.jsx",
-            "ThemeColors": "ThemeColors.jsx",
-            "ThemeEditor": "ThemeEditor.jsx",
-            "ThemePreview": "ThemePreview.jsx",
-            "Themes": "Themes.jsx",
-            "ThemeScheduling": "ThemeScheduling.jsx",
-            "Thumbnail": "Thumbnail.jsx",
-            "TitleBar": "titlebar.jsx",
-            "ToggleImages": "ToggleImages.jsx",
-            "ToggleTiling": "ToggleTiling.jsx",
-            "Tooltip": "Tooltip.jsx",
-            "TopMenu": "TopMenu.jsx",
-            "Trash": "Trash.jsx",
-            "TreeItem": "TreeItem.jsx",
-            "TypedHistory": "typedhistory.jsx",
-            "UrlBar": "urlbar.jsx",
-            "UrlField": "urlfield.jsx",
-            "VisualTabSwitcher": "VisualTabSwitcher.jsx",
-            "VivaldiDropdown": "common/Dropdown.jsx",
-            "VivaldiSettingsWrapper": "InsertVivaldiSettings.jsx",
-            "VivaldiTreeList": "VivaldiTreeList.jsx",
-            "WebPageCollection": "WebPageCollection.jsx",
-            "WebPageContent": "WebPageContent.jsx",
-            "webpagesPlugins": "webpagesPlugins.jsx",
-            "WebpagesSettingSection": "webpagesSettingSection.jsx",
-            "WebPanel": "webPanel.jsx",
-            "WelcomePage": "welcome.jsx",
-            "WelcomeStep": "WelcomeStep.jsx",
-            "ZoomIndicator": "ZoomIndicator.jsx",
-        };
-
-        var moduleSignatures = {
-            "AddressBarShortcuts": ['("Open Address in New Tab")'],
-            "BookmarksMock": ["otherBookmarksFolder", '"Other Bookmarks"', ".bookmarkItems"],
-            "categoryConstantToString": ['"Mail"', '"Page"'],
-            "chroma": ['"Logarithmic scales are only possible for values > 0"'],
-            "classnames": ["http://jedwatson.github.io/classnames"],
-            "css-layout": ["computeLayout:", "fillNodes:"],
-            "dexie": ['"Dexie specification of currently installed DB version is missing"'],
-            "EditableSpeedDialTitle": ["editable-title-container"],
-            "HistoryStoreSubscription": ["_onStoreChange:", "historyFilter:", '"searchResultsReady"'],
-            "InputMixin": ["renderOption:", "renderInputField:"],
-            "MailSender": ['"Failed to send message"'],
-            "Motion": ["startAnimationIfNecessary", "currentVelocity:"],
-            "NativeResizeObserver": ["NativeResizeObserver.js"],
-            "OkChangeButton": ['("OK")', '("Change")'],
-            "path": ["Arguments to path.resolve must be strings"],
-            "Portal": ["getOverlayDOMNode(): A component must be mounted to have a DOM node"],
-            "process": ["process.binding is not supported"],
-            "progress_indicator": ['.createElement("progress"', "bar:", "circular:"],
-            "punycode": ['"Overflow: input needs wider integers to process",'],
-            "SpeedDial": ["handleRemoveDial"],
-            "SpeedDialAddButton": ['"openAddSpeedDial"', '"thumbnail-image"'],
-            "SpeedDialAddContent": ["dials dial-suggestions"],
-            "SpeedDialDrawer": ["toggleStartpageDrawer", '"add-dial-submit primary"'],
-            "SpeedDialView": ["startpage-folder-navigation"],
-            "StorageMock": ["StorageMock", "getBytesInUse:"],
-            "TabsMock": ["captureVisibleTab"],
-            "ThemeScheduleDaemon": ["getTimerByDate:", "this.state.THEMES_SCHEDULE"],
-            "url": [".prototype.parseHost"],
-            "VelocityComponent": ["_clearVelocityCache"],
-            "VelocityTransitionGroupChild": [".CSS.setPropertyValue", "_parseAnimationProp"],
-            "WindowsMock": ["getLastFocused", "this.WINDOW_ID_CURRENT"],
-
-            "_ActionList_DataTemplate": ["CHROME_SET_SESSION:", "CHROME_TABS_ACTIVATED:"],
-            "_ActionManager": ["runAction:"],
-            "_BGTaskActions": ["setBackgroundTasks:"],
-            "_BookmarkBarActions": ["setBookmarkBarFolder:"],
-            "_Bookmarks": ["getBookmark:"],
-            "_BookmarkStore": ['getDefault("BOOKMARKS_BAR_FOLDER_IDS")', "getBookmarksBar"],
-            "_BookmarkThumbnailActions": [".BOOKMARK_THUMBNAIL_QUEUE_ADD_ITEM,"],
-            "_bytes": ["hexToBytes:", "bytesToHex:"],
-            "_Clipboard": ["pasteAsPlainText:"],
-            "_clone": ["typeof Symbol.iterator", '"function"', '"symbol"', '"function"', '"object"', ".constructor()", ".hasOwnProperty("],
-            "_CommandManager": ["getUserEditableCommands:"],
-            "_ContentScriptActions": ["addContentScript:"],
-            "_ContentScriptStore": [".CONTENT_SCRIPT_LOAD:", ".CONTENT_SCRIPT_PAGE_REMOVE:"],
-            "_decodeDisplayURL": [".removeTrailingSlashWhenNoPath(", ".getDisplayUrl(", "replace(/%20/"],
-            "_getLocalizedMessage": [".i18n.getMessage"],
-            "_GetPlatform": ['navigator.platform.indexOf("Linux")', '"linux"', 'navigator.platform.indexOf("MacIntel")', '"mac"', '"win"'],
-            "_getPrintableKeyName": ['"BrowserForward"', '"PrintScreen"'],
-            "_HandleActions": ["handleChromeAction:"],
-            "_humanizedate": ['"about a minute ago"', '"in about an hour"'],
-            "_KeyboardShortcuts": ["keyComboFromEvent:"],
-            "_KeyCodes": ["KEY_CANCEL:"],
-            "_KeyNameToChar": [".replace(/capslock/g,"],
-            "_languageList": ["ru:", "bg:"],
-            "_lodash_js_unk": ['"__lodash_hash_undefined__"', '"__lodash_placeholder__"', "lodash.templateSources"],
-            "_MailActions": [".MAIL_ADD_MESSAGES,"],
-            "_mime_list": ["application/vnd.intercon.formnet"],
-            "_MouseGesturesHandler": ['.get("MOUSE_GESTURES_ENABLED"'],
-            "_NavigationActions": ["setNavigationState:", "setProgressState:"],
-            "_NavigationButtonActions": ["navigateRewind:"],
-            "_NavigationState": ["getNavigationInfo:"],
-            "_NotesHandler": [".CHROME_NOTES_CREATED,"],
-            "_NoteStore": [".NOTES_LOAD_ALL:", ".NOTES_REMOVE_ITEM:"],
-            "_OmniSettings_DataTemplate": ["OMNI_RESULT_COUNT:"],
-            "_PageActions": [".CHROME_TABS_CREATED,", ".CHROME_TABS_REMOVED,"],
-            "_PageStore": [".PAGE_TOGGLE_PINNED:", ".PAGE_SET_TARGET_URL:"],
-            "_PanelActions": ["showNextPanel:"],
-            "_PanelContainerActions": ["getFirstAvailablePanel:"],
-            "_requestIdleCallback": ["return window.requestIdleCallback"],
-            "_SearchFieldActions": [".SEARCH_FIELD_SET_STATE,"],
-            "_SearchSuggestActions": ["suggest:", ".SEARCH_SUGGEST_RESULT"],
-            "_SessionManager": [".sessions.onChanged.addListener"],
-            "_SettingsAppearance": ['"Use Native Window"'],
-            "_SettingsData_Common": ['["ctrl+shift+v"]', "COMMAND_CLIPBOARD_PASTE_AS_PLAIN_TEXT_OR_PASTE_AND_GO"],
-            "_SettingsData_MAC": ['["shift+meta+v"]', "COMMAND_CLIPBOARD_PASTE_AS_PLAIN_TEXT_OR_PASTE_AND_GO"],
-            "_SettingsData_Other": ['["ctrl+shift+w"]'],
-            "_SettingsMigration": ['"SETTINGS_MIGRATION_VERSION"', "configurable:"],
-            "_SettingsMigration_1": ["preferenceKey:", '"vivaldi.home_page"'],
-            "_SettingsMigration_2": ["keep_relations", ".TAB_CLOSE_ACTIVATION"],
-            "_SettingsMigration_3": ['"Migrating Search Engines from"', ".SEARCH_ENGINES", '"to"'],
-            "_SettingsMigration_4": ["6607C819-705B-493E-B85F-75D5FF8ECA5D"],
-            "_SettingsMigration_5": ["A9AF7AAEA7E", "AD6C08C471A"],
-            "_SettingsMigration_6": [".TABCOLOR_BEHIND_TABS", "TABCOLOR_BEHIND_TABS:", "on", "Promise"],
-            "_SettingsMigration_7": ['.getSync("THEMES_SYSTEM")', ".THEMES_USER", "THEMES_USER:", ".cloneDeep"],
-            "_SettingsTabOptions": ['"Use Unread Indicators"'],
-            "_SettingsTabPosition": ['"Show Tab Bar"', '"Tab Bar Position"'],
-            "_ShowMenu": [".showMenu.onUrlHighlighted.addListener("],
-            "_ShowUI": ['document.getElementById("app")', "show hidden application window because of missing current window"],
-            "_SpatNavHandler": [".SPATNAV_NAVIGATE,"],
-            "_SpeedDialChangeListener": ["bookmarksPrivate.updateSpeedDialsForWindowsJumplist"],
-            "_StatusActions": ["setStatus:"],
-            "_TabActions": ["switchTabBackBySetting:"],
-            "_Thumbnails": ["getPageThumbnail:"],
-            "_TooltipActions": ["clearTooltip:", "showTooltip:"],
-            "_TooltipStore": [".TOOLTIP_CLEAR:", ".TOOLTIP_SHOW:"],
-            "_treeSort": ["treeSort:", "getDefaultComparator:"],
-            "_trydecodeURI": ["return decodeURI("],
-            "_trydecodeURIComponent": ["return decodeURIComponent(", "catch"],
-            "_TypedHistory": [".NAVIGATION_ADD_TYPED_HISTORY:"],
-            "_TypedSearchHistory": ["getSearchText:", "getTypedSearchHistory:"],
-            "_UIActions": ["showConfirmOpenBookmarkDialog:"],
-            "_updatePage": ["tabToPage", "updatePage", '"favIconUrl"'],
-            "_urlDecode": ['"%20"', '/\\+/g', "decodeURIComponent"],
-            "_urlEncode": ["encodeURIComponent(", '"number"'],
-            "_UrlFieldActions": ["setUrlfieldState:"],
-            "_UrlUtility": [".getDisplayTitle", "this._defaultMapDisplayUrlToUrl"],
-            "_UserAgentSpoofRules": ["navigator.userAgent.replace(/Vivaldi/,"],
-            "_ViewActionHandler": [".TAB_NEW_TAB:"],
-            "_VivaldiSettings": ["getKeysSync:", "getAllPrefs:"],
-            "_WebPageViewActions": ["showFindInPageToolbar:"],
-            "_WebPanelActions": ["copyWebPanelAdress:"],
-            "_WebViewActions": ["setActiveWebView:"],
-            "_zlibstream": ["Problem initializing deflate stream: ", "Problem initializing inflate stream: "],
-            "chrome": ["savedpasswords:", "topSites:"],
-            "chromeWrapper": ["window.chrome.tabs"],
-            "events": [".EventEmitter", ".listenerCount"],
-            "isEventSupported": ["Checks if an event is supported in the current execution environment."],
-            "keyMirror": ["keyMirror(...): Argument must be an object."],
-            "nm_buffer": ["The buffer module from node.js"],
-            "nm_immutable": ["Expected Array or iterable object of [k, v] entries"], //node_modules\immutable\dist\immutable.js
-            "vivaldi": ["bookmarksPrivate:"],
-
-            "_svg_addressbar_btn_backward": ["M17.6 20.4l-1.6 1.6-9-9 9-9 1.6 1.6-7.2 7.4 7.2 7.4z"],
-            "_svg_addressbar_btn_fastbackward": ["M19 6l-7 5.6v-5.6h-2v12h2v-5.6l7 5.6z"],
-            "_svg_addressbar_btn_fastforward": ["M10 6l7 5.6v-5.6h2v12h-2v-5.6l-7 5.6z"],
-            "_svg_addressbar_btn_forward": ["M15.2 13l-7.2 7.4 1.6 1.6 9-9-9-9-1.6 1.6 7.2 7.4z"],
-            "_svg_addressbar_btn_home": ["10h3.5v8h14v-8h3.5l-10.5-10zm5 16h-3v-5h-4v5h-3v"],
-            "_svg_addressbar_btn_reload": ["M4 13c0 4.95 4.05 9 9 9 4.162 0 7.65-2.924 8.662-6.75h-2.362c-.9 2"],
-            "_svg_addressbar_btn_reload_stop": ["M9.4 18l-1.4-1.4 4.6-4.6-4.6-4.6 1.4-1.4 4.6 4.6 4.6-4.6 1.4 1.4-4.6 4.6 "],
-            "_svg_bookmarked": ["M4,1 L4,14 L8,12 L12,14 L12,1 L4,1 Z M6,3 L10,3 L10,10.763"],
-            "_svg_bookmarks_toolbar_import": ["M13 18l4-4H9l4 4zM12 8v6h2V8h-2z"],
-            "_svg_bookmarks_update_thumbnail": ["M12.6 7C9.507 7 7 9.506 7"],
-            "_svg_btn_delete": ["M13.5 6l-1.4-1.4-3.1 3-3.1-3L4.5"],
-            "_svg_btn_dropdown": ["M8 11l4-6H4l4 6z"],
-            "_svg_btn_minus": ["M9 14h8v-2H9v2z"],
-            "_svg_btn_paneltoggle": ["195v12h-16v-12h16zm-10"],
-            "_svg_btn_plus": ["M11.975 14.04H9.02v-2.036h2.955V9h2.037v3.004h2.982v2.037h-2.982v2.934h-2.037V14.04z"],
-            "_svg_button_restart": ["M13 13H6V6l7 7z"],
-            "_svg_menu_bookmarks": ["M3 2v12l5-2 5 2V2H3zm8 9L8 9.646 5 11V4h6v8-1z"],
-            "_svg_menu_contacts": ["M10.4 7.43c1.02 0 1.8-.744 1.8-1.716"],
-            "_svg_menu_downloads": ["M8.914 6.995V3H6.057v3.995c0"],
-            "_svg_menu_mail": ["3v10h14V3H1zm7"],
-            "_svg_menu_notes": ["2v12h10V2H3zm9 11H4V4h8v9z"],
-            "_svg_menu_settings": ["M12.55 8v.592l1.325 1.014c.088.084.177.253.088.338l-1.236"],
-            "_svg_menu_vivaldi": ["M10.428 5.038c-.42-.85.027-1.804.943-2.008.747-.167 1.518.386 1.617"],
-            "_svg_notes_add_attachment": [".436.28.97.7.97h5.95c.98 0 1.75-1.043 1.75-2.06 0-1.02-.77-1.82-1.75"],
-            "_svg_notes_happynote": ['id="eye"'],
-            "_svg_pageactionchooser": ["M5.3 9.8L.8 6.5l4.6-3.3L6.6 5 4.2 6.4l2.3 1.7-1.2 1.6M10.7"],
-            "_svg_panel_bookmarks": ["v-11h8v11l-4"],
-            "_svg_panel_contacts": ["M15.6 19h5.4v-2.2c0-1.5-3-2.8-4.7-2.8-.7"],
-            "_svg_panel_downloads": ["M15 6h-4v5h-4l6 6 6-6h-4v-5zm-9"],
-            "_svg_panel_downloads_btn_resume": ["M16 13l-6 5V8l6 5z"],
-            "_svg_panel_downloads_btn_stop": ["M9 9h8v8H9z"],
-            "_svg_panel_history": ["M13.5 21a7.5 7.5 0 1 0 0-15 7.5 7.5"],
-            "_svg_panel_mail": ["8v11h16V8H5zm8"],
-            "_svg_panel_notes": ["20h12v-14h-12v14zm2-11h8v9h"],
-            "_svg_panel_settings": ["M10.982 17.576v.424l.404 1.704c0 .197.101.296.303.296h2.725c.101"],
-            "_svg_search_change_engine": ["M-182.6 201.9c.4-.7.7-1.5.7-2.3"],
-            "_svg_settings_category_addressbar": ["M0 0v10h16v-10h-16zm2"],
-            "_svg_settings_category_all": ["M16 9.077v-2.155l-1.913-.68c"],
-            "_svg_settings_category_appearance": ["4h16v10H0V4zm2"],
-            "_svg_settings_category_bookmarks": ["M3 2v13.333l5-1.666"],
-            "_svg_settings_category_downloads": ["M2 14h12v2h-12v-2zm12-4h2v6h-2v-6zm-14"],
-            "_svg_settings_category_keyboard": ["M0 4v9h16v-9h-16zm7"],
-            "_svg_settings_category_mail": ["M0 0v12h16v-12h-16zm8"],
-            "_svg_settings_category_mouse": ["M7.5 0c-3.025 0-5.5 2.314-5.5"],
-            "_svg_settings_category_network": ["M9 8v2h-2v-2h-4v2h-2v-4h6v-2h-2v-4h6v4h"],
-            "_svg_settings_category_panel": ["M16 0v12h-16v-12h16zm-10"],
-            "_svg_settings_category_privacy": ["M8 13c3.636 0 6.764-2.067"],
-            "_svg_settings_category_qc": ["M8 7.042l-4-4.042h3l4"],
-            "_svg_settings_category_search": ["M11.172 9.757l4.192 4.192-1.414"],
-            "_svg_settings_category_start_page": ["2h7v6h-7zm8 0h7v6h-7zm-8"],
-            "_svg_settings_category_startup": ["M9.96 2.446c-.498-1.02.032-2.164"],
-            "_svg_settings_category_tabs": ["M0 9h16v2h-16v-2zm0"],
-            "_svg_settings_category_themes": ["M5.976 11c-1.92.537-1.91"],
-            "_svg_settings_category_webpages": ["M8 1c-3.9 0-7 3.1-7 7s3.1"],
-            "_svg_sorting_selector_descending": ["M5.5.133l.11-.11 4.456"],
-            "_svg_speeddial_update_thumbnail": ["M13 4c-4.95 0-9 4.05-9 9s4.05 9 9 9c4.163"],
-            "_svg_startpage_newfolder": ['id="smallplus"'],
-            "_svg_tabstrip_btn_newtab": ["M7 9h-4v-2h4v-4h2v4h4v2h-4v4h-2v-4zm-7-9v16h16v-16h-16z"],
-            "_svg_tabstrip_btn_trashcan": ['"trashicon-content"'],
-            "_svg_toggleimages_noimages": ["M16 2H0v12h16V2zM4.89"],
-            "_svg_window_close": ["0h2v1H6V2zm1-1h2v1H7V1zM3"],
-            "_svg_window_close_mac": ["window-close-glyph dpi-standard"],
-            "_svg_window_close_win10": ["M10.2.5l-.7-.7L5 4.3.5-.2l-.7.7L4.3"],
-            "_svg_window_minimize": ["M1 7h8v2H1z"],
-            "_svg_window_minimize_mac": ["window-minimize-glyph dpi-standard"],
-            "_svg_window_minimize_win10": ["M0 0h10v1H0z"],
-            "_svg_window_zoom": ["7h10v1H0V8zm0-6h1v6H0V2zm9"],
-            "_svg_window_zoom_mac": ["window-zoom-glyph dpi-standard"],
-            "_svg_window_zoom_win10": ["0H2v2H0v8h8V8h2V0H3zm4"],
-            //todo:
-            "_svg_notes_tree_note": ["2h10v12h-10v-12zm1 2h8v9h-8v-9zm1"],
-            "_svg_notes_tree_note_has_url": ["M13 8v-6h-10v12h7v2l2.5-2"],
-            "_svg_vivaldi_horizontal_menu": ['id="horizontal-menu-button'],
-            "_svg_vivaldi_title": ['id="vivrect1"'],
-            "_svg_vivaldi_v": ["M14.726 7.446c-.537-1.023.035-2.164 1.2-2.41.948-.2"],
-
-            "react__invariant": ["Minified exception occurred; use the non-minified dev environment"],
-            "react_AutoFocusUtils": ["focusDOMComponent:"],
-            "react_BeforeInputEventPlugin": ["compositionUpdate:"],
-            "react_createMicrosoftUnsafeLocalFunction": ["MSApp.execUnsafeLocalFunction"],
-            "react_CSSProperty": ["borderTopWidth:"],
-            "react_CSSPropertyOperations": ["createMarkupForStyles:"],
-            "react_DOMChildrenOperations": ["dangerouslyReplaceNodeWithMarkup:", "replaceDelimitedText:"],
-            "react_DOMLazyTree": [".insertTreeBefore", ".replaceChildWithTree", ".queueHTML"],
-            "react_DOMNamespaces": ["mathml:", "http://www.w3.org/1998/Math/MathML"],
-            "react_DOMProperty": ["ROOT_ATTRIBUTE_NAME:"],
-            "react_DOMPropertyOperations": ["createMarkupForCustomAttribute:"],
-            "react_emptyFunction": [".thatReturnsThis", ".thatReturnsArgument"],
-            "react_EnterLeaveEventPlugin": ["mouseEnter:"],
-            "react_EventPluginHub": ["enqueueEvents:"],
-            "react_EventPluginRegistry": ["getPluginModuleForEvent:"],
-            "react_EventPluginUtils": ["executeDirectDispatch:"],
-            "react_EventPropagators": ["accumulateDirectDispatches:"],
-            "react_ExecutionEnvironment": ["canUseDOM:", "canUseEventListeners:"],
-            "react_FallbackCompositionState": ["getData:", "return this._fallbackText"],
-            "react_findDOMNode": [".nodeType", ".render", ".getNodeFromInstance(", "Object.keys("],
-            "react_getEventKey": ["19:", "MozPrintableKey:"],
-            "react_getVendorPrefixedEventName": ["animationend:"],
-            "react_HTMLDOMPropertyConfig": ["required:"],
-            "react_instantiateReactComponent": ["_instantiateReactComponent:", ".createInstanceForText("],
-            "react_LinkedValueUtils": ["You provided a `checked` prop to a form field without an `onChange` handler"],
-            "react_onClickOutside": ["Component lacks a handleClickOutside(event) function for processing outside click events."],
-            "react_PooledClass": ["twoArgumentPooler:"],
-            "react_React": ["only:", "toArray:"],
-            "react_ReactBrowserEventEmitter": ["listenTo:"],
-            "react_ReactChildReconciler": ["instantiateChildren:"],
-            "react_ReactChildren": ["mapIntoWithKeyPrefixInternal:"],
-            "react_ReactClass": ["getChildContext:"],
-            "react_ReactComponent": [".isReactComponent", ".enqueueForceUpdate("],
-            "react_ReactComponentEnvironment": [".processChildrenUpdates", "replaceNodeWithMarkup:"],
-            "react_ReactCompositeComponent": ["performInitialMountWithErrorHandling:"],
-            "react_ReactDefaultBatchingStrategy": ["this.reinitializeTransaction()", "isBatchingUpdates:", "batchedUpdates:"],
-            "react_ReactDOM": ["findDOMNode:"],
-            "react_ReactDOMComponentFlags": ["hasCachedChildNodes:"],
-            "react_ReactDOMComponentTree": ["getClosestInstanceFromNode:", '" react-text: "'],
-            "react_ReactDOMFactories": ["samp:"],
-            "react_ReactDOMFeatureFlags": ["useCreateElement:"],
-            "react_ReactDOMInput": ["initialChecked:"],
-            "react_ReactDOMOption": ["postMountWrapper:", "selected:", ".getSelectValueContext"],
-            "react_ReactDOMSelect": ["getSelectValueContext:", "initialValue:", "wasMultiple:"],
-            "react_ReactDOMSelection": ["getOffsets:"],
-            "react_ReactDOMTextComponent": [".getNodeFromInstance(", ".createDocumentFragment("],
-            "react_ReactEmptyComponent": ["injectEmptyComponentFactory:"],
-            "react_ReactErrorUtils": ["rethrowCaughtError:"],
-            "react_ReactEventEmitterMixin": ["handleTopLevel:", ".extractEvents("],
-            "react_ReactEventListener": ["_handleTopLevel:", "WINDOW_HANDLE:"],
-            "react_ReactFeatureFlags": ["logTopLevelRenders:"],
-            "react_ReactHostComponent": ["createInstanceForText:"],
-            "react_ReactInjection": ["EventEmitter:"],
-            "react_ReactInputSelection": ["hasSelectionCapabilities:"],
-            "react_ReactInstanceMap": ["._reactInternalInstance"],
-            "react_ReactMarkupChecksum": ["canReuseMarkup:"],
-            "react_ReactMount": ["_mountImageIntoNode:"],
-            "react_ReactMultiChild": ["createChild:"],
-            "react_ReactNodeTypes": ["EMPTY:", "COMPOSITE:"],
-            "react_ReactOwner": ["removeComponentAsRefFrom:"],
-            "react_ReactPropTypes": ["objectOf:"],
-            "react_ReactRef": [".detachRefs", ".removeComponentAsRefFrom"],
-            "react_ReactUpdateQueue": ["enqueueElementInternal:"],
-            "react_ReactUpdates": ["injectBatchingStrategy:"],
-            "react_renderSubtreeIntoContainer": [".renderSubtreeIntoContainer"],
-            "react_SelectEventPlugin": ["focusOffset:"],
-            "react_setInnerHTML": ["/<(!--|link|noscript|meta|script|style"],
-            "react_SVGDOMPropertyConfig": ["requiredExtensions:"],
-            "react_SyntheticAnimationEvent": ["animationName:"],
-            "react_SyntheticClipboardEvent": ["clipboardData:"],
-            "react_SyntheticDragEvent": ["dataTransfer:"],
-            "react_SyntheticEvent": ["eventPhase:"],
-            "react_SyntheticKeyboardEvent": ["charCode:"],
-            "react_SyntheticWheelEvent": ["deltaZ:"],
-            "react_Transaction": ["reinitializeTransaction:"],
-            "react_ViewportMetrics": ["currentScrollLeft:"],
-        };
-
-        vivaldi.jdhooks._moduleMap = {};
-        var slashre = new RegExp("\\\\\\\\", 'g');
-
-        for (var modIndex in vivaldi.jdhooks._modules) {
-            var found = false;
-
-            function AddAndCheck(modIndex, moduleName) {
-                if (("undefined" !== typeof vivaldi.jdhooks._moduleMap[moduleName]) && (vivaldi.jdhooks._moduleMap[moduleName] != modIndex))
-                    console.log('jdhooks: repeated module name "' + moduleName + '"');
-
-                vivaldi.jdhooks._moduleMap[moduleName] = modIndex;
-                //vivaldi.jdhooks._moduleNames[modIndex] = moduleName;
-                return true;
-            }
-
-            var fntxt = vivaldi.jdhooks._modules[modIndex].toString();
-            var fntxtPrepared = fntxt.replace(slashre, "/").toLowerCase();
-
-
-            for (var jsxModuleName in jsxNames) {
-                if (-1 !== fntxtPrepared.indexOf(jsxNames[jsxModuleName].toLowerCase())) {
-                    found = AddAndCheck(modIndex, jsxModuleName);
-                    if (fastProcessModules) delete jsxNames[jsxModuleName];
-                    break;
+            function checkFinished() {
+                if (0 === Object.keys(pendingscripts).length) {
+                    //all scripts are a loaded
+                    callback()
                 }
             }
 
-            if (fastProcessModules && found) continue;
+            function getDescription(fileEntry) {
+                fileEntry.file(file => {
+                    let reader = new FileReader();
+                    reader.onloadend = function (e) {
+                        const parsed = /^[\x00-\x20]*?(\/\*\s*([\s\S\w]*?)\*\/)|(\/\/\s*(.*))/gm.exec(reader.result)
+                        if (parsed) {
+                            const desc = parsed[2] || parsed[4]
+                            vivaldi.jdhooks._hookDescriptions[fileEntry.name] = desc
+                        }
+                    }
+                    reader.readAsText(file)
+                }, () => { })
+            }
+
+            let hooksItem = outerDirItems.find(_ => _.isDirectory && _.name == "hooks")
+
+            if (!hooksItem) {
+                checkFinished()
+            } else
+                hooksItem.createReader().readEntries(dirItems => {
+
+                    chrome.storage.local.get("JDHOOKS_STARTUP", function (cfg) {
+                        cfg = { ...{ JDHOOKS_STARTUP: { defaultLoad: false, scripts: {} } }, ...cfg }
+
+                        for (const i in dirItems) {
+                            let dirItem = dirItems[i]
+
+                            let fileExt = dirItem.name.split('.').pop().toUpperCase()
+
+                            if ((fileExt !== "JS") && (fileExt !== "CSS"))
+                                continue
+
+                            let shouldBeLoaded = undefined === cfg.JDHOOKS_STARTUP.scripts[dirItem.name] ? cfg.JDHOOKS_STARTUP.defaultLoad : cfg.JDHOOKS_STARTUP.scripts[dirItem.name]
+                            if (dirItem.name === "jdhooks-startup-settings.js") shouldBeLoaded = true
+
+                            getDescription(dirItem)
+
+                            vivaldi.jdhooks._hooks[dirItem.name] = shouldBeLoaded
+
+                            if (!shouldBeLoaded)
+                                continue
+
+                            let Elem
+                            if (fileExt === "JS") {
+
+                                Elem = document.createElement("script")
+                                Elem.src = `hooks/${dirItem.name}`
+                                pendingscripts[Elem.src] = true
+
+                                Elem.onload = function (e) {
+                                    delete pendingscripts[this.src]
+                                    checkFinished()
+                                }
+                            }
+
+                            if (fileExt === "CSS") {
+
+                                Elem = document.createElement("link")
+                                Elem.href = `hooks/${dirItem.name}`
+                                Elem.rel = "stylesheet"
+
+                            }
+
+                            document.head.appendChild(Elem)
+                        }
+                        checkFinished()
+                    }) //storage get
+                })
+        })) //getPackageDirectoryEntry
+    }
+
+    //---------------------------------------------------------------------
+    let classNameCache = jdhooks._dbg_classNameCache = {}
+
+    function makeSignatures() {
+        let jsxNames = {
+            "NativeResizeObserver": "vivaldi/NativeResizeObserver.js",
+        }
+
+        let moduleSignatures = {
+            "BookmarkActions": { signature: ["Error removing bookmark tree:"], exports: { "default": ["createBookmark"] } },
+            "buffer": { signature: ["The buffer module from node.js, for the browser"] },
+            "charenc": { signature: ["stringToBytes(unescape(encodeURIComponent("] },
+            "chroma.js": { signature: ["chroma.js"] },
+            "classnames": { signature: ["jedwatson.github.io/classnames"] },
+            "CommandActions": { signature: ["commandChanged", "restoreCommandGestures", "executeActions"] },
+            "core-js-internals-a-function": { signature: ['" is not a function!"'] },
+            "core-js-internals-an-object": { signature: ['" is not an object!"'] },
+            "core-js-internals-classof-raw": { signature: [").slice(8,", "{}.toString"] },
+            "core-js-internals-classof": { signature: ['"toStringTag"', '"Arguments"'] },
+            "core-js-internals-create-iterator-constructor": { signature: ['" Iterator")', ')("iterator"),'] },
+            "core-js-internals-define-iterator": { signature: ['"@@iterator"', '" Iterator"', "Object.prototype"] },
+            "core-js-internals-descriptors": { signature: ["Object.defineProperty({},", "return 7"] },
+            "core-js-internals-document-create-element": { signature: [").document,", ".createElement)", ".createElement("] },
+            "core-js-internals-enum-bug-keys": { signature: ["constructor,hasOwnProperty,isPrototypeOf,propertyIsEnumerable,toLocaleString,toString,valueOf"] },
+            "core-js-internals-global": { signature: ['"return this"', "window.Math"] },
+            "core-js-internals-html": { signature: ["document.documentElement", ").document"] },
+            "core-js-internals-ie8-dom-define": { signature: ["Object.defineProperty(", ')("div"),'] },
+            "core-js-internals-indexed-object": { signature: ['Object("z").propertyIsEnumerable(0)'] },
+            "core-js-internals-internal-metadata": { signature: ["KEY:", "onFreeze:"] },
+            "core-js-internals-is-array": { signature: ["Array.isArray", '"Array"'] },
+            "core-js-internals-microtask": { signature: [".WebKitMutationObserver", ".domain"] },
+            "core-js-internals-object-assign": { signature: ['"abcdefghijklmnopqrst"', "Symbol()"] },
+            "core-js-internals-object-create": { signature: [')("IE_PROTO")', ')("iframe"),'] },
+            "core-js-internals-object-define-property": { signature: ['TypeError("Accessors not supported!")'] },
+            "core-js-internals-object-get-own-property-descriptor": { signature: ["Object.getOwnPropertyDescriptor", ".f.call("] },
+            "core-js-internals-object-get-own-property-names-external": { signature: ["Object.getOwnPropertyNames(window)"] },
+            "core-js-internals-object-get-own-property-names": { signature: [').concat("length",', "Object.getOwnPropertyNames"] },
+            "core-js-internals-object-get-prototype-of": { signature: [')("IE_PROTO")', "Object.getPrototypeOf"] },
+            "core-js-internals-require-object-coercible": { signature: ["TypeError(\"Can't call method on  \""] },
+            "core-js-internals-set-species": { signature: [')("species")', "configurable:"] },
+            "core-js-internals-set-to-string-tag": { signature: [')("toStringTag")', "configurable:", "value:"] },
+            "core-js-internals-shared": { signature: ['["__core-js_shared__"]', "{}"] },
+            "core-js-internals-species-constructor": { signature: ['"species"', ").constructor"] },
+            "core-js-internals-string-multibyte": { signature: ["String(", ".charCodeAt(", "55296", ".charAt("] },
+            "core-js-internals-task": { signature: ['"onreadystatechange"', ".importScripts"] },
+            "core-js-internals-to-primitive": { signature: ["Can't convert object to primitive value"] },
+            "core-js-internals-uid": { signature: ['"Symbol(".concat(', ").toString(36))"] },
+            "core-js-internals-well-known-symbol": { signature: ['"Symbol."', ").Symbol"] },
+            "core-js-modules-es_array_iterator": { signature: [".Arguments", '"Array"', '"entries"'] },
+            "core-js-modules-es_promise": { signature: ["Promise can't be resolved itself"] },
+            "core-js-modules-es_string_iterator": { signature: [")(String,", '"String",', "done:"] },
+            "core-js-modules-es_symbol": { signature: ['"Symbol is not a constructor!"', "getOwnPropertySymbols:"] },
+            "createDOMPurify": { signature: ["TrustedTypes policy", '"beforeSanitizeElements"'] },//DOMPurify
+            "date-fns-build_format_locale": { signature: ["formattingTokensRegExp:", '"Tuesday"'] },
+            "date-fns-distance_in_words": { signature: ['"less than {{count}} seconds"'] },
+            "date-fns-format": { signature: ['"YYYY-MM-DDTHH:mm:ss.SSSZ"', ".format.formattingTokensRegExp"] },
+            "date-fns-get_days_in_month": { signature: [".getFullYear()", ".getMonth()", "new Date(0)", ".getDate()"] },
+            "date-fns-getTimezoneOffsetInMilliseconds": { signature: [".getTime())", ".getTimezoneOffset()", ".setSeconds(0,"] },
+            "date-fns-is_valid": { signature: ['" is not an instance of Date"'] },
+            "date-fns-parse": { signature: ["\/^(\\d{2}):?(\\d{2}):?(\\d{2}([.,]\\d*)?)$\/"] },
+            "dom-helpers-addClass": { signature: [".classList.add(", ".default)(", ".className"] },
+            "dom-helpers-removeClass": { signature: ["\" \").replace(\/^\\s*|\\s*$\/g,"] },
+            "DownloadActions": { signature: ["_setSearchFilter", '"restartDownload"'] },
+            "EventEmitter": { signature: ["Possible EventEmitter memory leak detected"] },
+            "expr-eval": { signature: ['"IEXPR"', "with(this.functions) with (this.ternaryOps) with (this.binaryOps) with (this.unaryOps) { return"] },
+            "flux-Dispatcher": { signature: ['._isDispatching', '"ID_"', "this._lastID++"] },
+            "flux-FluxReduceStore": { signature: ['"FluxReduceStore"', ".prototype.getInitialState"] },
+            "highlight.js-languages-apache": { signature: ["keywords:", '"order deny allow setenv rewriterule rewriteengine rewritecond documentroot '] },
+            "highlight.js-languages-applescript": { signature: ["keywords:", '"AppleScript false linefeed return'] },
+            "highlight.js-languages-bash": { signature: ["keywords:", '"if then else elif fi for'] },
+            "highlight.js-languages-basic": { signature: ["keywords:", '"ABS ASC AND ATN AUTO|0'] },
+            "highlight.js-languages-coffeescript": { signature: ["keywords:", '"//[gim]*"'] },
+            "highlight.js-languages-cpp": { signature: ["keywords:", '"int float while private'] },
+            "highlight.js-languages-css": { signature: ["keywords:", 'selector-id', "/#[A-Za-z0-9_-]+/"] },
+            "highlight.js-languages-diff": { signature: ["\/^\\*\\*\\* +\\d+,\\d+ +\\*\\*\\*\\*$\/"] },
+            "highlight.js-languages-django": { signature: [".COMMENT(\/\\{%\\s*comment\\s*%}\/"] },
+            "highlight.js-languages-dockerfile": { signature: ["keywords:", '"from maintainer expose env arg user onbuild stopsignal'] },
+            "highlight.js-languages-dos": { signature: ["keywords:", '"if else goto for in do call exit not exist'] },
+            "highlight.js-languages-ini": { signature: ["\/\\bon|off|true|false|yes|no\\b\/"] },
+            "highlight.js-languages-java": { signature: ["keywords:", '"jsp"'] },
+            "highlight.js-languages-javascript": { signature: ["keywords:", '"js"'] },
+            "highlight.js-languages-json": { signature: ["keywords:", '"true false null"', '"{"', '"attr"'] },
+            "highlight.js-languages-less": { signature: ["beginKeywords:", "(url|data-uri)\\\\("] },
+            "highlight.js-languages-markdown": { signature: ["excludeBegin:", '"mkdown"'] },
+            "highlight.js-languages-mathematica": { signature: ["keywords:", '"mma"'] },
+            "highlight.js-languages-matlab": { signature: ["keywords:", '"break case catch classdef continue else elseif end enumerated'] },
+            "highlight.js-languages-nginx": { signature: ["keywords:", '"on off yes no true false none blocked debug'] },
+            "highlight.js-languages-objectivec": { signature: ["keywords:", '"int float while char export sizeof typedef const'] },
+            "highlight.js-languages-perl": { signature: ["keywords:", '"getpwent getservent quotemeta msgrcv scalar kill'] },
+            "highlight.js-languages-python": { signature: ["keywords:", '"and elif is global as in if from raise for except'] },
+            "highlight.js-languages-ruby": { signature: ["keywords:", '"and then defined module in return redo if BEGIN'] },
+            "highlight.js-languages-scss": { signature: ["keywords:", "whitespace|wait|w-resize|visible|vertical-text|vertical-ideographic"] },
+            "highlight.js-languages-shell": { signature: ["subLanguage:", '"console"'] },
+            "highlight.js-languages-sql": { signature: ["keywords:", '"begin end start commit rollback savepoint lock alter'] },
+            "highlight.js-languages-swift": { signature: ["keywords:", "__COLUMN__ __FILE__ __FUNCTION__ __LINE__"] },
+            "highlight.js-languages-typescript": { signature: ["keywords:", '"ts"'] },
+            "highlight.js-languages-vim": { signature: ["keywords:", '"N|0 P|0 X|0 a|0 ab abc abo al am an'] },
+            "highlight.js-languages-xml": { signature: ["subLanguage:", '"html"', '"rss"'] },
+            "highlight.js": { signature: ["initHighlightingOnLoad", "highlight|plain|text"] },
+            "HistoryActions": { signature: ["saveStateFromSearchQuery", "VIVALDI_HISTORY_DISPLAY_MODE_CHANGE"] },
+            "immutability-helper-update": { signature: ["update(): You provided an invalid spec to update()"] },
+            "immutable-devtools": { signature: ["@@__IMMUTABLE_RECORD__@@", "OrderedMapFormatter"] },
+            "immutable": { signature: ["@@__IMMUTABLE_ITERABLE__@@", '"@@iterator"', "__immutablehash__"] },
+            "keyMirror": { signature: ["keyMirror(...): Argument must be an object."] },
+            "linkify": { signature: ["`splitRegex` must have the 'g' flag set"] },//remarkable plugin
+            "lodash-memoize": { signature: ['new TypeError("Expected a function")', ".Cache", ".apply(this,"] },
+            "lodash": { signature: ['"lodash"', "filter|find|map|reject"] },
+            "moment.js": { signature: ["use moment.updateLocale"] },
+            "node-crypt": { signature: ["rotl:", "hexToBytes:"] },
+            "normalize-url": { signature: ["removeQueryParameters:", "stripWWW:"] },
+            "NoteActions": { signature: ["createNotesFromTreeNodes", '"NotesCutIds"'] },
+            "Object.Assign": { signature: ["Object.assign cannot be called with null or undefined"] },
+            "PageActions": { signature: ['"if (document.pictureInPictureElement) { document.exitPictureInPicture() }"'], exports: { "default": ["createTabStack"] } },
+            "PanelActions": { signature: ["setPanelResizable", '"PANEL_SHOW_CONTENT"'] },
+            "PrefsCache": { signature: ["Unknown prefs property:"] },
+            "process": { signature: ["process.binding is not supported"] },
+            "prop-types-factoryWithTypeCheckers": { signature: [".checkPropTypes", "Read more at http://fb.me/use-check-prop-types"] },
+            "prop-types-ReactPropTypesSecret": { signature: ['"SECRET_DO_NOT_PASS_THIS_OR_YOU_WILL_BE_FIRED"'] },
+            "punycode": { signature: ['"Overflow: input needs wider integers to process",'] },
+            "react-css-transition-replace": { signature: ["string refs are not supported on children of ReactCSSTransitionReplace"] },
+            "react-dnd-decorators-DragDropContext": { signature: ['"DragDropContext"', '"backend"'] },
+            "react-dnd-decorators-DragDropContextProvider": { signature: ['DragDropContextProvider', '"DragDropContextProvider backend and window props must not change."'] },
+            "react-dnd-decorators-DragLayer": { signature: ['"DragLayer"', '"getDecoratedComponentInstance"'] },
+            "react-dnd-decorators-DragSource": { signature: ['"DragSource"', "containerDisplayName:"] },
+            "react-dnd-decorators-DropTarget": { signature: ['"DropTarget"', "containerDisplayName"] },
+            "react-dnd-dnd-core-createTestBackend": { signature: ['"simulateDrop"', '"simulateEndDrag"'] },
+            "react-dnd-dnd-core-DragDropManager": { signature: ["getBackend", "getMonitor", "getRegistry", "backend.teardown"] },
+            "react-dnd-dnd-core-DragDropMonitor": { signature: ['"canDragSource"', "handlerIds, when specified, must be an array of strings"] },
+            "react-dnd-dnd-core-HandlerRegistry": { signature: ["Cannot parse handler ID:", '"unpinSource"'] },
+            "react-dnd-dnd-core": { signature: ['"DragDropManager"', '"DragSource"'] },
+            "react-dnd-html5-backend-BrowserDetector": { signature: ["/firefox/i.test(navigator.userAgent)"] },
+            "react-dnd-html5-backend-EnterLeaveCounter": { signature: ['"enter"', "document.documentElement.contains("] },
+            "react-dnd-html5-backend-getEmptyImage": { signature: ["data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=="] },
+            "react-dnd-html5-backend-MonotonicInterpolant": { signature: ["this.c3s", '"interpolate"'] },
+            "react-dnd-html5-backend-NativeDragSources": { signature: ['"mutateItemByReadingDataTransfer"'] },
+            "react-dnd-html5-backend-OffsetUtils": { signature: [".getNodeClientOffset", '"IMG"'] },
+            "react-dnd-html5-backend": { signature: [".__isReactDndBackendSetUp"] },
+            "react-dnd": { signature: ['"DragDropContext"', '"DragDropContextProvider"'] },
+            "react-mosaic-buttons-defaultToolbarControls": { signature: ["DEFAULT_CONTROLS_WITH_CREATION", "createElement", ".ReplaceButton", ".ExpandButton"] },
+            "react-mosaic-buttons-ExpandButton": { signature: ["ExpandButton", '"pt-icon-maximize"'] },
+            "react-mosaic-buttons-MosaicButton": { signature: ["createDefaultToolbarButton", "mosaic-default-control pt-button pt-minimal"] },
+            "react-mosaic-buttons-RemoveButton": { signature: ["RemoveButton", '"Close Window"'] },
+            "react-mosaic-buttons-ReplaceButton": { signature: ["ReplaceButton", '"Replace Window"'] },
+            "react-mosaic-buttons-Separator": { signature: ["Separator", "SeparatorFactory", '"separator"'] },
+            "react-mosaic-buttons-SplitButton": { signature: ["SplitButton", '"Split Window"'] },
+            "react-mosaic-contextTypes": { signature: ["MosaicContext", ".func.isRequired"] },
+            "react-mosaic-Mosaic": { signature: ["MosaicFactory", "mosaic mosaic-drop-target"] },
+            "react-mosaic-MosaicDropTarget": { signature: [".MosaicDropTarget", "connectDropTarget:", '("drop-target",'] },
+            "react-mosaic-MosaicDropTargetPosition": { signature: [".MosaicDropTargetPosition", "TOP:"] },
+            "react-mosaic-MosaicRoot": { signature: [".MosaicRoot", '"mosaic-root"'] },
+            "react-mosaic-MosaicWindow": { signature: ["MosaicWindowFactory", "SourceConnectedInternalMosaicWindow"] },
+            "react-mosaic-MosaicZeroState": { signature: ["MosaicZeroState", "mosaic-zero-state pt-non-ideal-state"] },
+            "react-mosaic-RootDropTargets": { signature: [".RootDropTargets", '"drop-target-container"'] },
+            "react-mosaic-types": { signature: ["MosaicDragType", '"MosaicWindow"'] },
+            "react-mosaic-util-mosaicUpdates": { signature: ["buildSpecFromUpdate", "splitPercentage"] },
+            "react-mosaic-util-mosaicUtilities": { signature: ["createBalancedTreeFromLeaves", "did not resolve to a node"] },
+            "react-mosaic": { signature: ["MosaicFactory", "MosaicActionsPropType"] },
+            "react-motion": { signature: ["startAnimationIfNecessary", "lastIdealVelocity"] },
+            "react-transition-group-TransitionGroup": { signature: [".childContextTypes", '"childFactory"', '"div"'] },
+            "React": { signature: ["react.production."], exports: { "default": ["createElement"] } },
+            "ReactDOM": { signature: ["react-dom.production."], exports: { "default": ["findDOMNode"] } },
+            "remarkable": { signature: ["Wrong `remarkable` preset, check name/content"] },
+            "scheduler": { signature: ["scheduler.production."] },
+            "SearchEngineActions": { signature: ["setDefaultForSpeedDial", '"SEARCH_ENGINE_COLLECTION"'] },
+            "setProgressState": { signature: ["setProgressState", '"PAGE_SET_PROGRESS"'] },
+            "Startup": { signature: ['document.getElementById("app")', "JS init startup"] },
+            "StatusActions": { signature: [".STATUS_SET_STATUS", "setStatus("] },
+            "SyncActions": { signature: ["setEncryptionPassword", '"SYNC_ENGINE_STATE_CHANGED"'] },
+            "TrashActions": { signature: ["Error restoring tab:", "undeletePreviousTab"] },
+            "turndown": { signature: ["is not a string, or an element/document/fragment node.", "turndown:"] },
+            "url": { signature: [".prototype.parseHost"], exports: { "default": ["Url"] } },
+            "urlbarstore": { signature: ['"CONTENT_SCRIPT_PAGE_REMOVE"', "showTypedHistory()"] },
+            "utf8js": { signature: ["https://mths.be/utf8js"] },
+            "velocity-react-velocity-animate-shim": { signature: [".velocityReactServerShim", 'navigator.userAgent.indexOf("Node.js")'] },
+            "velocity-react-velocity-component": { signature: ['"fxqueue"', "_clearVelocityCache"] },
+            "velocity-react-velocity-helpers": { signature: ['"VelocityHelper.animation."'] },
+            "velocity-react-velocity-transition-group": { signature: ["this._scheduledAnimationRunFrames.push("] },
+            "velocity-react": { signature: ['"VelocityComponent"', '"velocityHelpers"'] },
+            "velocity.js": { signature: ["VelocityJS.org"] },
+            "VivaldiAccountActions": { signature: ["VIVALDI_ACCOUNT_STATE_UPDATED", "vivaldiAccount.login"] },
+            "VivaldiFeatureFlags": { signature: ["Enabling feature failed:"] },
+            "vivaldiSettings": { signature: ["_vivaldiSettingsListener"] },
+            "webpack-buildin-module": { signature: ["Object.defineProperty(", '"loaded",', ".paths"] },
+            "webpack-runtime-GlobalRuntimeModule": { signature: ['new Function("return this")()'] },
+            "WindowActions": { signature: [".windowPrivate.onMaximized"] },
+            "yoga-layout": { signature: ["computeLayout:", "fillNodes:"] },
+
+            "_ActionList_DataTemplate": { signature: ["CHROME_SET_SESSION:", "CHROME_TABS_API:"] },
+            "_BookmarkStore": { signature: ["validateAsBookmarkBarFolder"] },
+            "_CommandManager": { signature: ['emitChange("shortcut")'] },
+            "_CSSTransitionGroup": { signature: ['"CSSTransitionGroup"'] },
+            "_CSSTransitionGroupChild": { signature: ['"CSSTransitionGroupChild"', ".displayName"] },
+            "_CSSTransitionGroupChild_flushOnNext": { signature: [".default.prototype.flushClassNameAndNodeQueueOnNextFrame"] },
+            "_decodeDisplayURL": { signature: [".getDisplayUrl(", "decodeURI("], exports: { "formatUrl": ["view-source:", ".getDisplayUrl"] } },
+            "_getLocalizedMessage": { signature: [".i18n.getMessage"] },
+            "_getPrintableKeyName": { signature: ['"BrowserForward"', '"PrintScreen"'] },
+            "_HistoryStore": { signature: [".VIVALDI_HISTORY_INIT_FILTER:"] },
+            "_HotkeyManager": { signature: ["handleShortcut:"] },
+            "_KeyCodes": { signature: ["KEY_CANCEL:"] },
+            "_MouseGesturesHandler": { signature: ["onMouseGestureDetection.addListener"] },
+            "_NavigationInfo": { signature: ["getNavigationInfo", "NAVIGATION_SET_STATE"] },
+            "_NotesStore": { signature: ['"vivaldi/x-notes"'] },
+            "_PageStore": { signature: ["section=Speed-dials&activeSpeedDialIndex=0"], exports: { "default": ["getPageById"] } },
+            "_PageZoom": { signature: ["onUIZoomChanged.addListener"] },
+            "_PanelStore": { signature: ["getSelectedPanel:", ".PANEL_SET_PANELS:"] },
+            "_PrefKeys": { signature: ["vivaldi.downloads.update_default_download_when_saving_as"], exports: { "default": ["kAddressBarPosition"] } },
+            "_PrefSet": { signature: ["Not known how to make event handler for pref "] },
+            "_ProgressInfo": { signature: ["getProgressInfo", "PAGE_SET_PROGRESS"] },
+            "_RazerChroma": { signature: ["Error setting Razer Chroma color"] },
+            "_Search": { signature: ["withPageSelection:"] },
+            "_SearchEnginesStore": { signature: ['"vivaldi/x-search-engine"'], exports: { "default": ["getCurrentSD"] } },
+            "_ShowMenu": { signature: ["menubarMenu.onAction.addListener", "emphasized:"] },
+            "_Theme": { signature: ["fgBgHighlight", "colorAccentBgDarker:"] },
+            "_TransitionGroup": { signature: ['"TransitionGroup"'] },
+            "_UIActions": { signature: [".runtimePrivate.switchToGuestSession"] },
+            "_UrlFieldActions": { signature: ["history.onVisitRemoved.addListener"] },
+            "_urlutils": {
+                signature: ["Guest Profile Introduction"], exports: {
+                    "default": ["getDisplayUrl"],
+                    "urls": ["actionlog"]
+                }
+            },
+            "_VivaldiIcons": { signature: ["small:", "medium:", "large:"] },
+            "_WebViewStore": { signature: ["getActiveWebView()", ".WEBVIEW_CLEAR_IF_ACTIVE:"] },
+            "_WindowStore": { signature: ['"Attempting to toggle toolbars for a window without minimal UI"'], exports: { "default": ["getVisibleUI"] } },
+
+            "_svg_addressbar_btn_backward": { signature: ["M15.2929 20.7071C15.6834 21.0976 16.3166 21.0976 16.7071 20.7071C17.0976 20.3166 17.0976"] },
+            "_svg_addressbar_btn_fastbackward": { signature: ["M9 8C9 7.44772 9.44772 7 10 7C10.5523 7 11 7.44772 11 8V12L15.2929 7.70711C15.9229"] },
+            "_svg_addressbar_btn_fastforward": { signature: ["M17 18C17 18.5523 16.5523 19 16 19C15.4477 19 15 18.5523 15 18L15"] },
+            "_svg_addressbar_btn_forward": { signature: ["M9.29289 19.2929C8.90237 19.6834 8.90237 20.3166 9.29289 20.7071C9.68342 21.0976 10.3166 21.0976 10"] },
+            "_svg_addressbar_btn_home": { signature: ["M14.0607 5.14645C13.4749 4.56066 12.5251 4.56066 11.9393 5.14645L5"] },
+            "_svg_addressbar_btn_reload": { signature: ["M20 6.20711C20 5.76166 19.4614 5.53857 19.1464 5.85355L17.2797 7.72031C16.9669 7.46165 16.632 7.22741"] },
+            "_svg_addressbar_btn_reload_stop": { signature: ["M8.70711 7.29289C8.31658 6.90237 7.68342 6.90237 7.29289 7.29289C6.90237 7.68342 6.90237"] },
+            "_svg_bookmarked": { signature: ['id="addBookmarkPath"'] },
+            "_svg_bookmarks_large": { signature: ["M16.2929 20.2929L13 17L9.70711 20.2929C9.07714 20.9229 8 20.4767 8 19.5858V6C8 5.44772 8.44772 5 9 5H17C17.5523 5 18 5.44772 18 6V19.5858C18 20"] },
+            "_svg_bookmarks_small": { signature: ["M5 2C4.44772 2 4 2.44772 4 3V13.5858C4 14.4767"] },
+            "_svg_bookmarks_update_thumbnail": { signature: ["M12.6 7C9.507 7 7 9.506 7"] },
+            "_svg_btn_delete": { signature: ["M13.5 6l-1.4-1.4-3.1 3-3.1-3L4.5"] },
+            "_svg_btn_minus": { signature: ["M4 8C4 8.55228 4.44772 9 5 9H11C11.5523 9 12 8.55228 12"] },
+            "_svg_btn_plus_large": { signature: ["M12 14H9C8.44772 14 8 13.5523 8 13V13C8 12.4477 8.44772 12 9 12H12V9C12"] },
+            "_svg_btn_plus_small": { signature: ["M7 7V5C7 4.44772 7.44772 4 8 4C8.55228 4 9 4.44772"] },
+            "_svg_button_restart": { signature: ["M13 13H6V6l7 7z"] },
+            "_svg_calendar_large": { signature: ["M21 9C21 7.89543 20.1046 7 19 7H18V6C18 5.44772 17.5523"] },
+            "_svg_calendar_medium": { signature: ["M4 1C3.44772 1 3 1.44772 3 2C1.89543 2 1 2.89543"] },
+            "_svg_calendar_small": { signature: ["M4 2C4 1.44772 4.44772 1 5 1C5.55228 1 6 1.44772"] },
+            "_svg_contacts_large": { signature: ["M15.3601 14.0944C15.7634 13.2763 16 12.3882 16 11.5V10.7C16 8.97393"] },
+            "_svg_contacts_small": { signature: ["M6.32251 9.83154L7.19854 9.13994C7.79551 8.66865 8.18182 7.93438"] },
+            "_svg_downloads_large": { signature: ["M11 6C11 5.44772 11.4477 5 12 5H14C14.5523 5 15"] },
+            "_svg_downloads_small": { signature: ["M2 9.99988H0V14.9998C0 15.5521 0.447715 15.9998"] },
+            "_svg_history_large": { signature: ["M5 13C5 11.1401 5 10.2101 5.20445 9.44709C5.75925 7.37653 7.37653 5.75925 9.44709"] },
+            "_svg_history_medium": { signature: ["M7 5.5C7 5.22386 7.22386 5 7.5 5H8.5C8.77614"] },
+            "_svg_history_small": { signature: ["M7.5 4C7.22386 4 7 4.22386 7 4.5V8C7 8.13807 7.05596"] },
+            "_svg_mail_large": { signature: ["m6.64645 7.64645c.19526-.19527.51184-.19527.7071"] },
+            "_svg_mail_small": { signature: ["M1.64645 2.64645C1.84171 2.45118 2.15829"] },
+            "_svg_menu_vivaldi": { signature: ["M10.9604 4.44569C10.4629 3.42529 10.9928 2.28123 12.0753 2.03561C12.9563 1.83607 13.8679 2.4994 13.9847 3.41546C14.0358 3.81793 13.958 4.18653 13.763 4"] },
+            "_svg_notes": { signature: ["M7 18C7 19.1046 7.89543 20 9 20H17C18.1046"] },
+            "_svg_notes_add_attachment": { signature: [".436.28.97.7.97h5.95c.98 0 1.75-1.043 1.75-2.06 0-1.02-.77-1.82-1.75"] },
+            "_svg_panel_downloads_btn_resume": { signature: ["M16 13l-6 5V8l6 5z"] },
+            "_svg_settings_category_mouse": { signature: ["M7.5 0c-3.025 0-5.5 2.314-5.5"] },
+            "_svg_settings_category_privacy": { signature: ["M8 13c3.636 0 6.764-2.067"] },
+            "_svg_settings_category_themes": { signature: ["M5.976 11c-1.92.537-1.91"] },
+            "_svg_sorting_selector_descending": { signature: ["M5.5.133l.11-.11 4.456"] },
+            "_svg_tabs_large": { signature: ["M21 8C21 6.89543 20.1046 6 19 6H7C5.89543"] },
+            "_svg_tabs_small": { signature: ["M1 4C1 2.89543 1.89543 2 3 2H13C14.1046 2 15 2.89543"] },
+            "_svg_tabstrip_btn_trashcan": { signature: ['"trashicon-content"'] },
+            "_svg_vivaldi_title": { signature: ["M11 20c3.94 0 6.14 0 7.57-1.43S20 14.94 20 11s0-6.14-1.43-7.57S14.94 2 11 2 4.86 2 3.43 3.43 2 7.06 2 11s0 6.14 1.43 7.57S7.06 20 11 20"] },
+            "_svg_window_close": { signature: ["0h2v1H6V2zm1-1h2v1H7V1zM3"] },
+            "_svg_window_close_mac": { signature: ["window-close-glyph dpi-standard"] },
+            "_svg_window_close_win10": { signature: ["M10.2.5l-.7-.7L5 4.3.5-.2l-.7.7L4.3"] },
+            "_svg_window_minimize": { signature: ["M1 7h8v2H1z"] },
+            "_svg_window_minimize_mac": { signature: ["window-minimize-glyph dpi-standard"] },
+            "_svg_window_minimize_win10": { signature: ["M0 5H10V6H0V5Z"] },
+            "_svg_window_zoom": { signature: ["7h10v1H0V8zm0-6h1v6H0V2zm9"] },
+            "_svg_window_zoom_mac": { signature: ["window-zoom-glyph dpi-standard"] },
+            "_svg_window_zoom_win10": { signature: ["0H2v2H0v8h8V8h2V0H3zm4"] },
+            "_svg_write_1": { signature: ["M13.414.5c-.398 0-.779.158-1.061.439l-1.061 1.061"] },
+            "_svg_write_2": { signature: ["M14.05 1.28a.96.96 0 00-1.35 0l-.68.67"] },
+            "_svg_write_3": { signature: ["M9 16h2.53l7-7.03-2.54-2.4L9 13.46V16zm11.8-9.33a.64.64"] },
+
+            //background-bundle.js
+            //"net": { signature: [".createServer", ".createConnection"] },//dummy; used by stomp
+            //"stomp-websocket-stomp-node": { signature: [".overTCP", ".overWS", '"tcp://"'] },
+            //"stomp-websocket-stomp": { signature: ["v12.stomp"] },
+            //"stomp-websocket": { signature: [".Stomp", ".exports.overTCP"] },
+            //"WebSocket-Node-browser": { signature: ["w3cwebsocket:", '"CONNECTING"'] },
+
+            //inject-root-bundle.js
+            //"Readability": { signature: ["First argument to Readability constructor should be a document object."] },
+
+            //inject-all-spatnav-bundle.js
+            //"scrollIntoViewIfNeeded": { signature: ["Element is required in scrollIntoViewIfNeeded"] },
+        }
+
+        function replaceAll(str, match, to) { return str.split(match).join(to) }
+
+        function AddAndCheck(modIndex, moduleName) {
+            if (jdhooks._moduleMap[moduleName] && jdhooks._moduleMap[moduleName].idx != modIndex)
+                console.log(`jdhooks: repeated module name "${moduleName}"`)
+
+            if (jdhooks._moduleNames[modIndex]) {
+                console.log(`jdhooks: multiple names for module ${modIndex}: ${moduleName}, ${jdhooks._moduleNames[modIndex]}...`)
+                return true
+            }
+
+            jdhooks._moduleMap[moduleName] = { idx: modIndex, cached: { "*": defaultGetFn } }
+            jdhooks._moduleNames[modIndex] = moduleName
+            return true
+        }
+
+        for (const modIndex in jdhooks._modules) {
+            let found = false
+
+            const fntxt = jdhooks._modules[modIndex].toString()
+            const fntxtPrepared = replaceAll(replaceAll(replaceAll(fntxt, "\\\\", "/"), '\r', ' '), '\n', ' ')
+
+            //localization modules
+            if (!fastProcessModules) {
+                let match = /defineLocale\("(.*?)"/.exec(fntxtPrepared)
+                if (match) {
+                    AddAndCheck(modIndex, `locale_${match[1]}`)
+                }
+            }
+
+            let lastJsxFound = undefined
+            let jsxNameVars = [] //minified variable name -> displayable name
+            Array.from(fntxtPrepared.matchAll(/([\w\d_$]+)\s*[=:]\s*(\(\w\(\d+\),\s*)?"[^"]+components\/([\-\w\/]+?)\.js[x]?\"/g))
+                .forEach(([$, varName, $$, Name]) => {
+                    Name = replaceAll(Name, "/", "_")
+                    lastJsxFound = Name
+                    jsxNameVars[varName] = Name
+                })
+
+            if (lastJsxFound) {
+                AddAndCheck(modIndex, lastJsxFound)
+
+                let clsMatches = Array.from(fntxtPrepared.matchAll(/\bclass\s+([\w\d_$]+)?\s*extends[\s]+[\w\.]+Component/g))
+
+                for (i in clsMatches) {
+                    let className = clsMatches[i][1]
+
+                    let classBodyHere = fntxtPrepared.slice(clsMatches[i].index,
+                        clsMatches.hasOwnProperty[i + 1] ? clsMatches[i + 1].index : fntxtPrepared.length)
+
+                    //source file name from variable(jsxNameVars) or string
+                    let fileNameMatches = /__source:\s*\{\s*fileName:\s*(([\w\d_$]+)|(\"[^"]+components\/([\-\w\/]+?)\.js[x]?\")),/.exec(classBodyHere)
+                    if (fileNameMatches) {
+                        let classReadableName = fileNameMatches[2] ? jsxNameVars[fileNameMatches[2]] : replaceAll(fileNameMatches[4], "/", "_")
+
+                        if (classNameCache[modIndex + className]) console.log("jdhooks: duplicated class table item", modIndex + className, classNameCache[modIndex + className], classReadableName)
+                        classNameCache[`${className}_${modIndex}`] = classReadableName
+                    }
+                }
+            }
+
+            for (const jsxModuleName in jsxNames) {
+                if (-1 !== fntxtPrepared.indexOf(jsxNames[jsxModuleName])) {
+                    found = AddAndCheck(modIndex, jsxModuleName)
+                    if (fastProcessModules) delete jsxNames[jsxModuleName]
+                    break
+                }
+            }
+            if (fastProcessModules && found) continue
 
             //signatures
-            for (var moduleName in moduleSignatures) {
-                if (moduleSignatures[moduleName].every(function(i) {
-                        return -1 < fntxt.indexOf(i)
-                    })) {
-                    found = AddAndCheck(modIndex, moduleName);
-                    if (fastProcessModules) delete moduleSignatures[moduleName];
-                    break;
+            for (const moduleName in moduleSignatures) {
+                if (moduleSignatures[moduleName].signature.every(i => -1 < fntxt.indexOf(i))) {
+                    found = AddAndCheck(modIndex, moduleName)
+                    if (moduleSignatures[moduleName].exports)
+                        jdhooks._moduleMap[moduleName].exports = moduleSignatures[moduleName].exports
+                    if (fastProcessModules) {
+                        delete moduleSignatures[moduleName]
+                        break
+                    }
                 }
             }
         }
 
 
         function checkUnknown(obj) {
-            for (var moduleName in obj)
-                if (!vivaldi.jdhooks._moduleMap[moduleName]) {
-                    console.log("jdhooks: unknown module", moduleName);
+            for (const moduleName in obj)
+                if (!jdhooks._moduleMap[moduleName]) {
+                    console.log("jdhooks: unknown module", moduleName)
                 }
         }
 
-        checkUnknown(jsxNames);
-        checkUnknown(moduleSignatures);
+        checkUnknown(jsxNames)
+        checkUnknown(moduleSignatures)
     }
 
     //---------------------------------------------------------------------
 
-    var oldWebpackJsonp = window.webpackJsonp;
-    window.webpackJsonp = function(chunkIds, modules, startupModules) {
-        //hook startup module
-        var startmodule = startupModules ? startupModules[0] : 0;
-        var oldm0 = modules[startmodule];
-        modules[startmodule] = function(moduleInfo, exports, nrequire) {
-            vivaldi.jdhooks.require = function(module) {
-                var retValue = null;
+    function jdhooks_module_step2(startupModule, modules_list) {
+        modules_list["newStartup"] = modules_list[startupModule]
+        modules_list[startupModule] = function () { }
 
-                if ("number" === typeof module) retValue = nrequire(module);
-                else {
+        jdhooks._modules = modules_list
+        makeSignatures()
 
-                    if ("undefined" === typeof vivaldi.jdhooks._moduleMap[module])
-                        throw "jdhooks.require: unknown module " + module;
+        //override "require" so we can store module indexes for classes extending PureComponent/Component
+        //which in turn allows to hook classes
+        function overrideRequire(require, moduleIndex) {
+            req = mod => {
+                let imported = require(mod)
+                //TODO: check React wrappers?
+                if (0 !== mod) {
+                    return imported
+                } else {
 
-                    retValue = nrequire(vivaldi.jdhooks._moduleMap[module]);
-                }
-                if (retValue.hasOwnProperty("a")) retValue = retValue.a;
-                else
-                if (retValue.hasOwnProperty("default")) retValue = retValue.default; //todo: whitelist?
+                    let cached = new WeakMap()
 
-                return retValue;
-            };
-            for (var i in nrequire) {
-                if (typeof nrequire[i] === "object" && typeof nrequire[i][startmodule] === "function") {
-                    vivaldi.jdhooks._modules = nrequire[i];
-                }
-            }
+                    function PureComponent(props, context, updater) { imported.PureComponent.apply(this, arguments) }
+                    PureComponent.prototype = { ...imported.PureComponent.prototype, ...PureComponent.prototype, ...{ jdhooks_module_index: moduleIndex } }
 
-            if (!vivaldi.jdhooks._modules) {
-                console.log("jdhooks: cannot find modules table");
-                return oldm0(moduleInfo, exports, nrequire);
-            } else {
+                    function Component(props, context, updater) { let ret = imported.Component.apply(this, arguments) }
+                    Component.prototype = { ...imported.Component.prototype, ...Component.prototype, ...{ jdhooks_module_index: moduleIndex } }
 
-                //all ok
+                    return {
+                        ...imported,
+                        ...{
+                            Component: Component,
+                            PureComponent: PureComponent,
 
-                makeSignatures();
-
-                var callStack = [];
-                for (var moduleIndex in vivaldi.jdhooks._modules) {
-                    (function(moduleIndex, oldfn) {
-                        vivaldi.jdhooks._modules[moduleIndex] = function(moduleInfo, exports, require) {
-                            callStack.push(moduleInfo.i);
-                            oldfn(moduleInfo, exports, require);
-                            callStack.pop();
-                        }
-                    })(moduleIndex, vivaldi.jdhooks._modules[moduleIndex]);
-                }
-
-                vivaldi.jdhooks.hookModule("VivaldiSettingsWrapper", function(moduleInfo, exportsInfo) {
-                    vivaldi.jdhooks.hookMember(exportsInfo.parent, exportsInfo.name, function(hookData, fn, settingsKeys) {
-                        var hookCallbacks = hookSettingsWrapperList[callStack[callStack.length - 1]];
-
-                        for (var i in hookCallbacks) {
-                            hookCallbacks[i](fn, settingsKeys);
-                        }
-
-                    });
-                });
-
-
-                //hookModule("_ShowUI", function(moduleInfo) {
-                //    //all classes created
-                //});
-
-                //hook classes
-                vivaldi.jdhooks._classes = {};
-                hookModule("react_React", function(moduleInfo, exportsInfo) {
-                    hookMember(exportsInfo.exports, "createClass", function(hookData, reactClass) {
-                        if ("undefined" !== typeof hookClassList[reactClass.displayName]) {
-
-                            if (vivaldi.jdhooks._unusedClassHooks[reactClass.displayName]) delete vivaldi.jdhooks._unusedClassHooks[reactClass.displayName];
-
-                            for (var i in hookClassList[reactClass.displayName]) {
-                                hookClassList[reactClass.displayName][i](reactClass);
+                            createElement: (type, ...e) => {
+                                //TODO: check if type extends PureComponent or Component directly?
+                                if (type.prototype && type.prototype.jdhooks_module_index) {
+                                    let cachedType = cached.get(type)
+                                    if (cachedType) {
+                                        type = cachedType
+                                    }
+                                    else {
+                                        origtype = type
+                                        let className = classNameCache[`${type.name}_${type.prototype.jdhooks_module_index}`]
+                                        if (className) {
+                                            type.prototype.__jdhooks_instanceof = className
+                                            for (cb of hookClassList[className] || []) { type = cb(type) }
+                                            delete jdhooks._unusedClassHooks[className]
+                                        }
+                                        cached.set(origtype, type)
+                                    }
+                                }
+                                let r = imported.createElement(type, ...e)
+                                if (type.prototype && type.prototype.__jdhooks_instanceof)
+                                    r.__jdhooks_instanceof = type.prototype.__jdhooks_instanceof
+                                return r
                             }
                         }
-
-                        vivaldi.jdhooks._classes[reactClass.displayName] = reactClass;
-                    });
-                });
-
-                //wait for UI
-                hookModule("_requestIdleCallback", function(moduleInfo, exportsInfo) {
-                    vivaldi.jdhooks.hookMember(exportsInfo.parent, exportsInfo.name, function(hookData, cat) {
-                        document.dispatchEvent(new Event("jdhooks.uiready"))
-                    });
-                });
-
-                loadHooks(function() {
-                    return oldm0(moduleInfo, exports, nrequire)
-                });
+                    }
+                }
             }
-
+            for (k in require) req[k] = require[k]
+            return req
         }
 
-        return oldWebpackJsonp && oldWebpackJsonp(chunkIds, modules, startupModules);
+        for (const moduleIndex in modules_list) {
+            let oldfn = modules_list[moduleIndex]
+            modules_list[moduleIndex] = (moduleInfo, exports, require) => {
+                oldfn(moduleInfo, exports, overrideRequire(require, moduleIndex))
+            }
+        }
+
+        //wait for UI
+        hookModuleExport("_RazerChroma", "default", oldExports => {
+            return {
+                ...oldExports,
+                init: () => {
+                    document.dispatchEvent(new Event(jdhooks_ui_ready_event))
+                    oldExports.init()
+                }
+            }
+        })
     }
 
-})();
+    function jdhooks_module_step1(moduleInfo, exportsInfo, nrequire) {
+
+        let cl = arguments.callee
+        while (cl.caller != null) cl = cl.caller
+        let match = cl.toString().match(/\.\s*push\s*\(\s*\[\s*(\d+)/m)
+        if (null == match) return
+        let startupModule = Number(match[1])
+
+        for (const propertyName in nrequire) {
+            if (nrequire[propertyName] && nrequire[propertyName][jdhooks_module_index] && nrequire[propertyName][jdhooks_module_index].name) {
+                let modules_list = nrequire[propertyName]
+
+                jdhooks.require = function req(module, exportName = "default") {
+                    //returns exports as is if "module" argument is a number
+                    if ("number" === typeof module) return nrequire(module)
+
+                    let moduleMap = jdhooks._moduleMap[module]
+
+                    //unknown module name
+                    if (!moduleMap) throw `jdhooks.require: unknown module ${module}`
+
+                    const retValue = nrequire(moduleMap.idx)
+
+                    //returns exports as is if module exports non object value
+                    if (typeof retValue !== "object") return retValue
+
+                    if (moduleMap.cached && moduleMap.cached[exportName]) return moduleMap.cached[exportName].get(retValue)
+
+                    const getFn = trySignatures(module, exportName, retValue)
+                    if (getFn) return getFn.get(retValue)
+
+                    throw `jdhooks.require: cannot find export ${exportName} for module ${module}`
+                }
+
+                jdhooks_module_step2(startupModule, modules_list)
+                loadHooks(_ => nrequire("newStartup")) //run
+                break
+            }
+        }
+    }
+
+    window.webpackJsonp.push([[0], { [jdhooks_module_index]: jdhooks_module_step1 }, [[jdhooks_module_index]]])
+})()

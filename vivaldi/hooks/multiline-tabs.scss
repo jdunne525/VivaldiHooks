@@ -1,0 +1,95 @@
+﻿/* Multiline tabs */
+
+#browser.tabs-bottom,
+#browser.tabs-top {
+    #tabs-tabbar-container {
+        height: auto !important;
+    }
+
+    #tabs-container {
+        height: auto !important;
+
+        .resize {
+            display: block !important;
+        }
+
+        .sync-and-trash-container .synced-tabs-button {
+            align-self: flex-end;
+        }
+    }
+
+    .tab-strip {
+        display: flex;
+        flex-wrap: wrap;
+
+        & > span {
+            display: inline-block;
+
+            & > .tab-position {
+                left: 0px !important;
+                position: relative;
+                height: 30px !important;
+                width: auto !important;
+                transform: inherit !important;
+
+                & > .tab:not(.pinned) {
+                    width: 220px !important;
+                }
+                & > .tab.pinned {
+                    width: 30px !important;
+                }
+
+                .tab-header > .favicon > svg {
+                    height: 17px;
+                }            
+            }
+        }
+
+        .toolbar-tabbar {
+            margin-left: auto;
+            position: relative;
+            .newtab {
+                left: 0 !important;
+                top: 0 !important;
+                padding: 0;
+                vertical-align: top;
+            }
+        }
+    }
+
+    //fix for small/mini tabs
+
+    .tab-position .tab:hover.tab-small .close,
+    .tab-position .tab.force-hover.tab-small .close {
+        display: flex;
+    }
+
+    .tab-position .tab:hover.active.tab-small .close,
+    .tab-position .tab.force-hover.active.tab-small .close,
+    &.linux.alt .tab-position .tab:hover.tab-small:not(.active) .favicon,
+    &.linux.alt .tab-position .tab.force-hover.tab-small:not(.active) .favicon,
+    &.mac .tab-position .tab:hover.tab-small:not(.active) .favicon,
+    &.mac .tab-position .tab.force-hover.tab-small:not(.active) .favicon {
+        display: flex;
+    }
+
+    &.win .tab-position .tab:hover.tab-small.active .title,
+    &.win .tab-position .tab.force-hover.tab-small.active .title,
+    &.linux:not(.alt) .tab-position .tab:hover.tab-small.active .title,
+    &.linux:not(.alt) .tab-position .tab.force-hover.tab-small.active .title {
+        display: flex;
+    }
+
+    #tabs-container .tab.tab-small.tab-mini .tab-header,
+    #tabs-container .tab.pinned.tab-mini .tab-header {
+        justify-content: initial;
+        padding-left: 6px;
+        padding-right: 0;
+        border: none;
+    }
+
+    #tabs-container .tab.tab-small.tab-mini .tab-header .title,
+    #tabs-container .tab.pinned.tab-mini .tab-header .title {
+        display: flex;
+    }
+} //end sass

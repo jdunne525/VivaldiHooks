@@ -1,75 +1,106 @@
 //Close Tab button in Quick Commands
 
-function hookRender(qcPrototype) {
+vivaldi.jdhooks.addStyle(`
+	.quick-command:not([data-selected]) .quick-command-close-tab { display: none }
+	.quick-command[data-selected] .quick-command-close-tab { background-color: rgba(0, 0, 0, .15)}
+`, "qc-close-tab.js")
 
-    var style = document.createElement("style");
-    style.setAttribute("description", "added by qcCloseTab.js");
-    style.textContent =
-        ".quick-command:not([data-selected]) .quick-command-close-tab { display: none }" +
-        ".quick-command[data-selected] .quick-command-close-tab { background-color: rgba(0, 0, 0, .15)}";
-    document.head.appendChild(style);
+vivaldi.jdhooks.hookClass("quickCommands_QuickCommandSearch", cls => {
+	const PageActions = vivaldi.jdhooks.require("PageActions")
+	const PageStore = vivaldi.jdhooks.require("_PageStore")
 
-    vivaldi.jdhooks.hookMember(qcPrototype, "render", null, function(hookData) {
-        if ("openTab" == this.props.item.type) {
+	class qc extends cls {
 
-            var React = vivaldi.jdhooks.require("react_React");
-            var getLocalizedMessage = vivaldi.jdhooks.require("_getLocalizedMessage");
+		jdUpdateTabs() {
+			for (let idx in this.state.renderedArray) {
+				let item = this.state.renderedArray[idx]
+				if (item.type === "openTab") item.jdOnTabClose = () => {
+					PageActions.closePage(PageStore.getPageById(item.pageId))
+					this.openTabsInAllWindows = this.openTabsInAllWindows.filter(x => x.id != item.pageId)
+					this.searchChange(this.state.quickCommandSearchValue, 0)
+				}
+			}
+		}
 
-            var this_quickCommandItem = this;
+		constructor(...e) {
+			super(...e)
+			this.jdUpdateTabs()
 
-            hookData.retValue.props.children.push(
-                React.createElement("span", {
-                    className: "quick-command-close-tab",
-                    title: getLocalizedMessage("Close Tab"),
-                    dangerouslySetInnerHTML: {
-                        __html: vivaldi.jdhooks.require("_svg_btn_delete")
-                    },
-                    onClick: function(e) {
-                        e.stopPropagation();
+			this.qcInitialFocus = document.activeElement
+			this.qcFocusLost = false
 
-                        var downloadTabPageStore = vivaldi.jdhooks.require("_PageStore");
+			const old_onKeyDown = this.onKeyDown
+			this.onKeyDown = (e => {
+				if (e.shiftKey && e.key == "Delete") {
+					const item = this.state.renderedArray[this.qclist.getSelectedIndex()]
+					if (item.jdOnTabClose) item.jdOnTabClose()
+					e.preventDefault()
+					e.stopPropagation()
+					return
+				}
+				return old_onKeyDown(e)
+			})
 
-                        var page = downloadTabPageStore.getPages().find(function(page) {
-                            return page.get("id") === this_quickCommandItem.props.item.id
-                        });
+			this.qcCloseSetFocusBack = this.qcCloseSetFocusBack.bind(this)
+		}
 
-                        if (page) {
-                            vivaldi.jdhooks.require("_PageActions").closePage(page);
+		qcCloseSetFocusBack(evt) {
+			this.qcFocusLost = true
+			evt.target.focus()
+		}
 
-                            this_quickCommandItem.props.onItemClick({
-                                type: "jdhooks_refresh_qc",
-                                id: this_quickCommandItem.props.item.id
-                            })
-                        }
-                    }
-                })
-            );
-        }
+		componentDidMount() {
+			if (super.componentDidMount) super.componentDidMount()
+			this.refs.quickCommand.addEventListener("blur", this.qcCloseSetFocusBack)
+		}
 
-        return hookData.retValue;
-    });
-}
+		componentWillUnmount() {
+			this.refs.quickCommand.removeEventListener("blur", this.qcCloseSetFocusBack)
+			if (super.componentWillUnmount) super.componentWillUnmount()
 
-vivaldi.jdhooks.hookModule("QuickCommandItem", function(moduleInfo, exportsInfo) {
-    hookRender(exportsInfo.exports.prototype);
-});
-vivaldi.jdhooks.hookModule("QuickCommandItemObsolete", function(moduleInfo, exportsInfo) {
-    hookRender(exportsInfo.exports.prototype);//todo: remove after 1.11final
-});
+			if (this.qcFocusLost) {
+				if (document.body.contains(this.qcInitialFocus)) {
+					this.qcInitialFocus.focus()
+				} else {
+					const activeWebView = document.querySelector(".active.webpageview webview")
+					if (activeWebView) activeWebView.focus()
+				}
+			}
+		}
 
+		componentDidUpdate(prevProps, prevState, snapshot) {
+			if (super.componentDidUpdate) super.componentDidUpdate(prevProps, prevState, snapshot)
+			this.jdUpdateTabs()
+		}
+	}
+	return qc
+})
 
-vivaldi.jdhooks.hookSettingsWrapper("QuickCommandSearch", function(fn, settingsKeys) {
-    vivaldi.jdhooks.hookMember(fn.prototype, "componentWillMount", function(hookData) {
-        var _this = this;
-        vivaldi.jdhooks.hookMember(this, "executeCommand", function(hookData, cmd) {
-            if (cmd.type === "jdhooks_refresh_qc") {
-                var idx = _this.qclist.props.renderedArray.findIndex(function(i) {
-                    return i.id == cmd.id
-                });
-                if (-1 < idx) _this.qclist.props.renderedArray.splice(idx, 1);
-                _this.qclist.rerenderVisibleTreeItems();
-                hookData.abort();
-            }
-        });
-    });
-});
+vivaldi.jdhooks.hookClass("quickCommands_CommandItem", cls => {
+	const React = vivaldi.jdhooks.require("React")
+	const getLocalizedMessage = vivaldi.jdhooks.require("_getLocalizedMessage")
+
+	class qcItem extends cls {
+		render() {
+			let r = super.render()
+
+			if (this.props.item.type == "openTab") {
+				r.props.children.push(
+					React.createElement("span", {
+						className: "quick-command-close-tab",
+						title: getLocalizedMessage("Close Tab"),
+						dangerouslySetInnerHTML: { __html: vivaldi.jdhooks.require("_svg_btn_delete") },
+						onClick: (e => {
+							e.stopPropagation()
+
+							if (this.props.item.jdOnTabClose) this.props.item.jdOnTabClose()
+						}).bind(this)
+					})
+				)
+			}
+
+			return r
+		}
+	}
+	return qcItem
+})

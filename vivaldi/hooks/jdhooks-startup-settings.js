@@ -1,158 +1,139 @@
 //Settings: select hooks to load
 //Настройки: выбор хуков для загрузки
 
-vivaldi.jdhooks.hookSettingsWrapper("StartupSettings", function(fn, settingsKeys) {
+vivaldi.jdhooks.addStyle(`
+.hooks-startup-settings-description {
+    margin-left: 2ch;
+}
+`, "jdhooks-startup-settings.js")
 
-    var newScripts = {};
-    var jdhooksStartupSettings;
+vivaldi.jdhooks.hookClass("settings_startup_StartupSettingsSection", oldClass => {
+    const React = vivaldi.jdhooks.require("React")
+    const settings = vivaldi.jdhooks.require("vivaldiSettings")
+    const settings_SettingsSearchCategoryChild = vivaldi.jdhooks.require("settings_SettingsSearchCategoryChild")
 
-    var settings = vivaldi.jdhooks.require("_VivaldiSettings");
+    let newScripts = []
 
-    vivaldi.jdhooks.hookMember(fn.prototype, "componentWillMount", function(hookData) {
-
-        var _this = this;
-
-        _this.updateHookSettings = function() {
-            settings.set({
-                JDHOOKS_STARTUP: jdhooksStartupSettings
-            });
-        };
-        _this.toggleDefaultLoad = function() {
-            jdhooksStartupSettings.defaultLoad = !_this.state.jdhooks_defaultLoad;
-            _this.updateHookSettings();
-            _this.setState({
-                jdhooks_defaultLoad: !_this.state.jdhooks_defaultLoad
-            });
-        };
-        _this.toggleScriptState = function(script) {
-            jdhooksStartupSettings.scripts[script] = !_this.state["jdhooks_" + script];
-            _this.updateHookSettings();
-            var state = {};
-            state["jdhooks_" + script] = !_this.state["jdhooks_" + script];
-            _this.setState(state);
-        };
-
-        function updateState(obj) {
-            var state = {
-                jdhooks_defaultLoad: jdhooksStartupSettings.defaultLoad
-            };
-
-            //states
-            for (script in vivaldi.jdhooks._hooks) {
-                if (!(script in jdhooksStartupSettings.scripts)) {
-                    jdhooksStartupSettings.scripts[script] = jdhooksStartupSettings.defaultLoad;
-                    newScripts[script] = true;
-                    updated = true;
-                }
-
-                state["jdhooks_" + script] = jdhooksStartupSettings.scripts[script];
-            };
-
-            obj.setState(state);
+    class Section extends React.Component {
+        setProperty(obj, name, value) {
+            if (name in obj) Object.defineProperty(obj, name, { value: value, enumerable: true, configurable: true, writable: true }); else obj[name] = value
         }
 
-        if (!jdhooksStartupSettings) {
-            //read cfg, fill props & state
-            settings.get("JDHOOKS_STARTUP", function(e) {
-                if (undefined === e) e = {};
-                if (undefined === e.defaultLoad) e.defaultLoad = true;
-                if (undefined === e.scripts) e.scripts = {};
+        constructor(...e) {
+            super(...e)
 
-                jdhooksStartupSettings = e;
-                var updated = false;
+            let newState = {
+                ...{
+                    defaultLoad: false,
+                    scripts: {},
+                    scriptNames: []
+                },
+                ...settings.getSync(["JDHOOKS_STARTUP"])
+            }
 
-                //remove deleted scripts from settings
-                for (script in jdhooksStartupSettings.scripts) {
-                    if (!(script in vivaldi.jdhooks._hooks)) {
-                        updated = true;
-                        delete jdhooksStartupSettings.scripts[script];
-                    }
+            let updated = false
+
+            //remove deleted scripts from settings
+            for (let script in newState.scripts) {
+                if (!(script in vivaldi.jdhooks._hooks)) {
+                    updated = true
+                    delete newState.scripts[script]
                 }
+            }
 
-                updateState(_this);
+            for (let script in vivaldi.jdhooks._hooks) {
+                if (!(script in newState.scripts)) {
+                    newState.scripts[script] = newState.defaultLoad
+                    newScripts[script] = true
+                    updated = true
+                }
+            }
 
-                if (updated)
-                    _this.updateHookSettings();
+            newState.scriptNames = Object.keys(newState.scripts)
+            newState.scriptNames.sort((first, second) => first.localeCompare(second, { sensitivity: "accent" }))
 
-            }.bind(_this));
-        } else
-            updateState(_this);
-    });
+            this.setProperty(this, "state", newState)
+            if (updated) this.updateHookSettings()
+        }
 
+        updateHookSettings() {
+            settings.set({ ["JDHOOKS_STARTUP"]: { "defaultLoad": this.state.defaultLoad, "scripts": this.state.scripts } })
+        }
 
-    vivaldi.jdhooks.hookMember(fn.prototype, "render", null, function(hookData) {
+        toggleDefaultLoad() {
+            this.setState({ defaultLoad: !this.state.defaultLoad }, () => this.updateHookSettings())
+        }
 
-        //check if settings are loaded
-        if (hookData.retValue && (undefined !== this.state.jdhooks_defaultLoad)) {
+        toggleScriptState(script) {
+            let scripts = this.state.scripts
+            scripts[script] = !scripts[script]
+            this.setState({ "scripts": scripts }, () => this.updateHookSettings())
+        }
 
-            var React = vivaldi.jdhooks.require("react_React");
-
-            var subitems = [];
-
-            var scriptNames = Object.keys(vivaldi.jdhooks._hooks);
-            scriptNames.sort(function(first, second) {
-                return first.localeCompare(second, {
-                    sensitivity: "accent"
-                });
-            });
-
-            for (scriptNum in scriptNames) {
-                var script = scriptNames[scriptNum];
-
-                var newLabel = !newScripts[script] ? null : React.createElement("span", {
-                    style: {
-                        color: "red",
-                        textShadow: "rgb(255, 255, 255) 0px 0px 0.2em, rgb(0,0, 0) 0px 0px 0.2em"
-                    }
-                }, " (NEW!)");
-
-                subitems.push(
-                    React.createElement("div", {
-                            className: "setting-single"
-                        },
+        render() {
+            return React.createElement(settings_SettingsSearchCategoryChild, { filter: this.props.filter },
+                React.createElement("h2", null, "Hooks"),
+                React.createElement("div", { className: "setting-group unlimited" },
+                    React.createElement("div", { className: "setting-single" },
                         React.createElement("label", null,
                             React.createElement("input", {
                                 type: "checkbox",
-                                checked: this.state["jdhooks_" + script],
-                                onChange: this.toggleScriptState.bind(this, script)
+                                checked: this.state.defaultLoad,
+                                onChange: this.toggleDefaultLoad.bind(this)
                             }),
-                            React.createElement("span", null,
-                                script,
-                                newLabel
-                            )
+                            React.createElement("span", null, "Startup mode for new items")
+                        )
+                    ),
+                    React.createElement("div", {
+                        className: "setting-group unlimited pad-top"
+                    },
+                        React.createElement("h3", null, "Load hook files"),
+                        React.createElement("table", null,
+                            this.state.scriptNames.map(script => {
+
+                                const newLabel = !newScripts[script] ? null : React.createElement("span", {
+                                    style: {
+                                        color: "red",
+                                        textShadow: "rgb(255, 255, 255) 0px 0px 0.2em, rgb(0,0, 0) 0px 0px 0.2em"
+                                    }
+                                }, " (NEW!)")
+
+                                return React.createElement("tr", null,
+                                    React.createElement("td", null,
+                                        React.createElement("label", null,
+                                            React.createElement("input",
+                                                {
+                                                    type: "checkbox",
+                                                    checked: this.state.scripts[script] || script == "jdhooks-startup-settings.js",
+                                                    onChange: this.toggleScriptState.bind(this, script),
+                                                    disabled: script == "jdhooks-startup-settings.js"
+                                                }),
+                                            React.createElement("span", null,
+                                                script,
+                                                newLabel))
+                                    ),
+                                    React.createElement("td", null,
+                                        React.createElement("label", { className: "hooks-startup-settings-description" },
+                                            React.createElement("span", null, vivaldi.jdhooks._hookDescriptions[script])),
+                                    )
+                                )
+                            })
                         )
                     )
-                );
-            };
-
-            hookData.retValue.props.children.push(
-                React.createElement("div", null,
-                    React.createElement("h2", null, "Hooks"),
-                    React.createElement("div", {
-                            className: "setting-group"
-                        },
-                        React.createElement("div", {
-                                className: "setting-single"
-                            },
-                            React.createElement("label", null,
-                                React.createElement("input", {
-                                    type: "checkbox",
-                                    checked: this.state.jdhooks_defaultLoad,
-                                    onChange: this.toggleDefaultLoad.bind(this)
-                                }),
-                                React.createElement("span", null, "Startup mode for new items")
-                            )
-                        ),
-                        React.createElement("div", {
-                                className: "setting-group pad-top"
-                            },
-                            React.createElement("h3", null, "Load hook files"),
-                            subitems)
-                    )
                 )
-            );
+            )
         }
+    }
 
-        return hookData.retValue;
-    }); //vivaldi.jdhooks.hookMember(reactClass, "render", null, function(hookData)
-});
+    class newSettingsClass extends oldClass {
+        render() {
+            let r = super.render()
+
+            r.props.children.push(React.createElement(Section, this.props))
+
+            return r
+        }
+    }
+
+    return newSettingsClass
+})

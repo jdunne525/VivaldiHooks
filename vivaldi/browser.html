@@ -1,24 +1,34 @@
 <!DOCTYPE html>
 <html>
   <head>
+    <!-- Keep the styling in sync with ./window.html -->
     <meta charset="UTF-8" />
     <title>Vivaldi</title>
     <link rel="stylesheet" href="style/common.css" />
+    <link rel="stylesheet" href="chrome://vivaldi-data/css-mods/css" />
+    <style>
+      body {
+        background-color: #d2d2d2;
+        background-image: url('resources/vivaldi-splash-icon.svg');
+        background-size: 16%;
+        background-position: center;
+        background-repeat: no-repeat;
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          background-color: #2d2d2d;
+        }
+      }
+    </style>
   </head>
-  <body style="
-    background-color: #d4d4d4;
-    background-image: url('resources/vivaldi-splash-icon.svg');
-    background-size: 16%;
-    background-position: center;
-    background-repeat: no-repeat;">
+  <body>
     <div id="app" />
-    <script src="localeSettings-bundle.js"></script>
     <script src="background-common-bundle.js"></script>
     <script src="vendor-bundle.js"></script>
     <script src="settings-bundle.js"></script>
     <script src="urlbar-bundle.js"></script>
     <script src="components-bundle.js"></script>
-    <script src="load_hooks.js"></script>
+    <script src="jdhooks.js"></script>
     <script src="bundle.js"></script>
   </body>
 </html>

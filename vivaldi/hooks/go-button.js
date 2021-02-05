@@ -1,154 +1,112 @@
-//GO button
-//Кнопка перехода по ссылке из адресной строки
+//GO buttons in addressbar
+//Кнопки перехода для адресной и посковой строк
 
-(function() {
-
-    //default settings
-    vivaldi.jdhooks.hookModule("_SettingsData_Common", function(moduleInfo, exportsInfo) {
-        exportsInfo.exports["ADDRESS_BAR_URL_GO_ENABLED"] = true;
-        exportsInfo.exports["ADDRESS_BAR_SEARCH_GO_ENABLED"] = true;
-    });
-
-    //settings
-    vivaldi.jdhooks.hookSettingsWrapper("AddressBar", function(fn, settingsKeys) {//settings
-    
-	settingsKeys.push("ADDRESS_BAR_URL_GO_ENABLED", "ADDRESS_BAR_SEARCH_GO_ENABLED");
-
-        var settingSaveCallback = function(settingKey, eventProperty, event) {
-            vivaldi.jdhooks.require("_VivaldiSettings").set({
-                [settingKey]: event.target[eventProperty]
-            });
-        };
-
-        vivaldi.jdhooks.hookMember(fn.prototype, "render", null, function(hookData) {
-
-            if (hookData.retValue) {
-                var React = vivaldi.jdhooks.require("react_React");
-
-                var settingKeys = this.props.vivaldiSettings;
-
-                hookData.retValue.props.children.push(
-                    React.createElement("h3", null, "GO button"));
-
-                hookData.retValue.props.children.push(
-                    React.createElement("div", {
-                            className: "setting-single"
-                        },
-                        React.createElement(
-                            "label",
-                            null,
-                            React.createElement("input", {
-                                type: "checkbox",
-                                checked: settingKeys.ADDRESS_BAR_URL_GO_ENABLED,
-                                onChange: settingSaveCallback.bind(this, "ADDRESS_BAR_URL_GO_ENABLED", "checked")
-                            }),
-                            React.createElement("span", null, "UrlField")
-                        )
-                    ));
-
-                hookData.retValue.props.children.push(
-                    React.createElement("div", {
-                            className: "setting-single"
-                        },
-                        React.createElement(
-                            "label",
-                            null,
-                            React.createElement("input", {
-                                type: "checkbox",
-                                checked: settingKeys.ADDRESS_BAR_SEARCH_GO_ENABLED,
-                                onChange: settingSaveCallback.bind(this, "ADDRESS_BAR_SEARCH_GO_ENABLED", "checked")
-                            }),
-                            React.createElement("span", null, "SearchField")
-                        )
-                    ));
-            }
-            return hookData.retValue;
-        });
-
-    });
-
-
-    function newRender(hookData) {
-
-        var React = vivaldi.jdhooks.require("react_React");
-        var ReactDOM = vivaldi.jdhooks.require("react_ReactDOM");
-
-        var settingKeys = this.props.vivaldiSettings;
-
-        var findRef = function(ref) {
-            for (var i = 0; i < hookData.retValue.props.children.length; i++) {
-                if (hookData.retValue.props.children[i].ref === ref)
-                    return i;
-            }
-            return false;
-        };
-
-        var createSVG = function() {
-            return React.createElement("svg", {
-                    width: "26",
-                    height: "26",
-                    viewBox: "0 0 26 26",
-                },
-                React.createElement("path", {
-                    d: "M 12,4 10.400391,5.5996094 16.5,11.869141 l -13.5,0 0,2.261718 13.5,0 -6.099609,6.269532 L 12,22 21,13 12,4 Z"
-                }))
-        };
-
-        if (settingKeys.ADDRESS_BAR_URL_GO_ENABLED) {
-            var itm = findRef("addressfield");
-            if (itm !== false) {
-                hookData.retValue.props.children.splice(itm + 1, 0,
-                    React.createElement(
-                        "button", {
-                            className: "button-toolbar buttonGo",
-                            ref: "webpageview_nav_go",
-                            onMouseUp: function(evt) {
-                                var n = this.refs.urlField.props.editUrl;
-                                if (!n) n = this.refs.urlField.props.url;
-                                ReactDOM.findDOMNode(this.refs.urlField).value = n;
-
-                                this.urlFieldGo(evt, {
-                                    inCurrent: evt.button !== 1
-                                })
-                            }.bind(this),
-                            style: {
-                                outline: "none",
-                                boxShadow: "none"
-                            }
-                        }, createSVG()));
-            }
+vivaldi.jdhooks.hookModuleExport("vivaldiSettings", "default", exports => {
+    let oldGetDefault = exports.getDefault
+    exports.getDefault = name => {
+        switch (name) {
+            case "ADDRESS_BAR_URL_GO_ENABLED": return true
+            case "ADDRESS_BAR_SEARCH_GO_ENABLED": return true
+            default: return oldGetDefault(name)
         }
+    }
+    return exports
+})
 
-        if (settingKeys.SEARCH_FIELD_ENABLED && settingKeys.ADDRESS_BAR_SEARCH_GO_ENABLED) {
-            var itm = findRef("search");
-            if (itm !== false) {
-                hookData.retValue.props.children.splice(itm + 1, 0,
-                    React.createElement("button", {
-                        className: "button-toolbar buttonSearchGo",
-                        ref: "webpageview_nav_s_go",
-                        onMouseUp: function(evt) {
-                            this.onSearch(
-                                this.refs.search.refs.component.refs.instance.state.editText,
-                                this.refs.search.refs.component.refs.instance.state.currentSearchEngine, {
-                                    inCurrent: !(evt && evt.button === 1)
-                                })
-                        }.bind(this),
-                        style: {
-                            outline: "none",
-                            boxShadow: "none"
-                        }
-                    }, createSVG()));
-            }
-        }
+vivaldi.jdhooks.hookClass("urlfield_UrlBar", oldClass => {
+    const React = vivaldi.jdhooks.require("React")
+    const ToolbarButton = vivaldi.jdhooks.require("toolbars_ToolbarButton")
 
-        return hookData.retValue;
+    function btn(onclick) {
+        const buttonImage = '<svg width="26" height="26" viewBox="0 0 26 26"><path d="M 12,4 10.400391,5.5996094 16.5,11.869141 l -13.5,0 0,2.261718 13.5,0 -6.099609,6.269532 L 12,22 21,13 12,4 Z"></path></svg>'
+        return React.createElement(ToolbarButton, {
+            tooltip: "Go!",
+            onClick: onclick,
+            onMiddleClick: onclick,
+            image: buttonImage,
+        })
     }
 
+    class newUrlBar extends oldClass {
+        render() {
+            let r = super.render()
 
-    vivaldi.jdhooks.hookSettingsWrapper("UrlBar", function(fn, settingsKeys) {
-    	settingsKeys.push("ADDRESS_BAR_URL_GO_ENABLED", "ADDRESS_BAR_SEARCH_GO_ENABLED");
-    	vivaldi.jdhooks.hookMember(fn.prototype, "render", null, newRender);
-    });
+            const idxAddressField = r.props.children.findIndex(x => x && (x.props.className == "UrlBar-AddressField"))
+            if (idxAddressField > -1) r.props.children.splice(idxAddressField + 1, 0,
+                this.state.jdVivaldiSettings.ADDRESS_BAR_URL_GO_ENABLED
+                    ? btn((evt) =>
+                        this.handleUrlFieldSubmit({
+                            url: this.state.editUrl || this.props.url,
+                            options: { inCurrent: evt.button !== 1 }
+                        }))
+                    : null
+            )
+
+            const idxSearchField = r.props.children.findIndex(x => x && (x.ref == "searchField"))
+            if (idxSearchField > -1) r.props.children.splice(idxSearchField + 1, 0,
+                this.state.jdVivaldiSettings.ADDRESS_BAR_SEARCH_GO_ENABLED
+                    ? btn((evt) =>
+                        this.onSearch(
+                            this.refs.searchField.state.editText,
+                            this.refs.searchField.state.currentSearchEngine,
+                            { inCurrent: evt.button !== 1 }
+                        )
+                    )
+                    : null
+            )
+
+            return r
+        }
+    }
+
+    return vivaldi.jdhooks.insertWatcher(newUrlBar, { settings: ["ADDRESS_BAR_URL_GO_ENABLED", "ADDRESS_BAR_SEARCH_GO_ENABLED"] })
+})
+
+vivaldi.jdhooks.hookClass("settings_addressbar_AddressBar", oldClass => {
+    const React = vivaldi.jdhooks.require("React")
+    const Settings_SettingsSearchCategoryChild = vivaldi.jdhooks.require("settings_SettingsSearchCategoryChild")
+    const VivaldiSettings = vivaldi.jdhooks.require("vivaldiSettings")
+
+    const Setting = vivaldi.jdhooks.insertWatcher(class extends React.PureComponent {
+        render() {
+            return React.createElement(Settings_SettingsSearchCategoryChild, { filter: this.props.filter },
+                React.createElement("h3", null, "Go button"),
+                React.createElement("div", { className: "setting-group" },
+                    React.createElement("div", { className: "setting-single" },
+                        React.createElement("label", null,
+                            React.createElement("input", {
+                                type: "checkbox",
+                                checked: this.state.jdVivaldiSettings.ADDRESS_BAR_URL_GO_ENABLED,
+                                onChange: () => VivaldiSettings.set({
+                                    ADDRESS_BAR_URL_GO_ENABLED: !this.state.jdVivaldiSettings.ADDRESS_BAR_URL_GO_ENABLED
+                                })
+                            }),
+                            React.createElement("span", null, "Go button after addressfield")
+                        )
+                    ),
+                    React.createElement("div", { className: "setting-single" },
+                        React.createElement("label", null,
+                            React.createElement("input", {
+                                type: "checkbox",
+                                checked: this.state.jdVivaldiSettings.ADDRESS_BAR_SEARCH_GO_ENABLED,
+                                onChange: () => VivaldiSettings.set({
+                                    ADDRESS_BAR_SEARCH_GO_ENABLED: !this.state.jdVivaldiSettings.ADDRESS_BAR_SEARCH_GO_ENABLED
+                                })
+                            }),
+                            React.createElement("span", null, "Go button after searchfield")
+                        )
+                    )
+                )
+            )
+        }
+    }, { settings: ["ADDRESS_BAR_URL_GO_ENABLED", "ADDRESS_BAR_SEARCH_GO_ENABLED"] })
 
 
-})();
+    return class extends oldClass {
+        render() {
+            let r = super.render()
+            r.props.children.push(React.createElement(Setting, this.props))
+            return r
+        }
+    }
+})

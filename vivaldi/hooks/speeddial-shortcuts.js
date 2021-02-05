@@ -1,62 +1,52 @@
 //Keyboard shortcuts for SpeedDial
 //Горячие клавиши для элементов экспресс-панели
 
-(function() {
 
-    //category name
-    vivaldi.jdhooks.hookModule('categoryConstantToString', function(moduleInfo, exportsInfo) {
+//TODO: cannot display category name :(
 
-        var actionList = vivaldi.jdhooks.require('_ActionList_DataTemplate');
+vivaldi.jdhooks.hookModuleExport("vivaldiSettings", "default", exports => {
+    let oldGetDefault = exports.getDefault
+    exports.getDefault = name => {
+        if (typeof name == "string" && name.substr(0, 23) == "COMMAND_OPEN_SPEEDDIAL_") return { showInQC: true }
+        return oldGetDefault(name)
+    }
+    return exports
+})
 
-        if ('undefined' === typeof actionList.CATEGORY_COMMAND_HOOK) {
-            actionList.CATEGORY_COMMAND_HOOK = 'CATEGORY_COMMAND_HOOK';
+vivaldi.jdhooks.hookModuleExport('_CommandManager', "default", exports => {
 
-            vivaldi.jdhooks.hookMember(exportsInfo.parent, exportsInfo.name, function(hookData, cat) {
-                if (cat === actionList.CATEGORY_COMMAND_HOOK) {
-                    hookData.abort();
-                    return "Hooks";
-                }
-            }, null);
-        }
-    });
+    function openSpeedDialItem(i) {
+        const UrlFieldActions = vivaldi.jdhooks.require("_UrlFieldActions")
+        const PrefKeys = vivaldi.jdhooks.require("_PrefKeys")
+        const PrefCache = vivaldi.jdhooks.require('PrefsCache')
 
-    //default settings
-    vivaldi.jdhooks.hookModule('_SettingsData_Common', function(moduleInfo, exportsInfo) {
-        for (var i = 1; i < 10; i++) {
-            exportsInfo.exports['COMMAND_OPEN_SPEEDDIAL_' + i] = {
-                shortcut: [],
-                showInQC: true
-            };
-        }
-    });
-
-    var openSpeedDialItem = function(i) {
-        var sdi = vivaldi.jdhooks.require('_BookmarkStore').getSpeeddialNodes();
+        const sdi = vivaldi.jdhooks.require('_BookmarkStore').getSpeeddialFolders()
 
         if (sdi && sdi[0] && sdi[0].children[i - 1]) {
-            var innew = vivaldi.jdhooks.require('_VivaldiSettings').getSync("QUICK_COMMAND_OPEN_URL_IN_NEW_TAB");
-            vivaldi.jdhooks.require('_PageActions').openURL(sdi[0].children[i - 1].url, {
-                inCurrent: !innew,
-                inBackground: !innew
-            });
+            UrlFieldActions.go([sdi[0].children[i - 1].url], {
+                inCurrent: !PrefCache.get(PrefKeys.kQuickCommandsOpenUrlInNewTab),
+                addTypedHistory: false,
+                addTypedSearchHistory: false,
+                enableSearch: true
+            })
         }
-    };
+    }
 
-    vivaldi.jdhooks.hookModule('_CommandManager', function(moduleInfo, exportsInfo) {
-        var commands = exportsInfo.exports.getCommands();
+    let cmds = exports.getCommands()
 
-        for (var i = 1; i < 10; i++) {
-            (function(x) {
-                commands.push({
-                    name: "COMMAND_OPEN_SPEEDDIAL_" + i,
-                    action: function() {
-                        openSpeedDialItem(x)
-                    },
-                    label: "Open SpeedDial item " + i,
-                    category: 'CATEGORY_COMMAND_HOOK'
-                });
-            })(i);
+    for (let i = 1; i < 10; i++) {
+        (function (x) {
+            cmds.push({
+                name: "COMMAND_OPEN_SPEEDDIAL_" + x,
+                action: () => openSpeedDialItem(x),
+                label: "Open SpeedDial item " + x,
+                labelEnglish: "Open SpeedDial item " + x,
+                category: 'CATEGORY_COMMAND_HOOK',
+                showInQC: true
+            })
         }
-    });
+        )(i)
+    }
 
-})();
+    return exports
+})

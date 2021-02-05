@@ -1,92 +1,164 @@
 //Bookmarks button before AddressBar
 //Кнопка с выпадающими закладками перед строкой адреса
 
-(function() {
+{
+    const position = { separate: "separate", addressfield: "addressfield" }
 
-    bookmarksOnClick = function(e) {
+    vivaldi.jdhooks.hookModuleExport("vivaldiSettings", "default", exports => {
+        let oldGetDefault = exports.getDefault
+        exports.getDefault = name => {
+            switch (name) {
+                case "BOOKMARK_BUTTON_POSITION": return position.separate
+                default: return oldGetDefault(name)
+            }
+        }
+        return exports
+    })
 
-        var clone = vivaldi.jdhooks.require("_clone");
-        var treeSort = vivaldi.jdhooks.require("_treeSort");
+    function bookmarksOnClick(event) {
+        const CommandManager = vivaldi.jdhooks.require("_CommandManager")
+        const ShowMenu = vivaldi.jdhooks.require("_ShowMenu")
 
-        var bookmarkSorting = vivaldi.jdhooks.require("_VivaldiSettings").getSync("BOOKMARKS_PANEL_BOOKMARKSSORT");
+        let menu = CommandManager.getNamedMenu("vivaldi", true)
+        if (!menu.length) menu = CommandManager.getNamedMenu("menubar", true)
 
-        var defaultComparator = treeSort.getDefaultComparator(bookmarkSorting.sortOrder, bookmarkSorting.sortField);
-
-        var comparator = function(first, second) {
-            var isFolder = function(treeItem) {
-                return !!treeItem && (treeItem.children && treeItem.children.length > 0 || void 0 === treeItem.url)
-            };
-            if (first.trash) return 1;
-            if (second.trash) return -1;
-            if (isFolder(first) && !isFolder(second)) return -1;
-            if (isFolder(second) && !isFolder(first)) return 1;
-            return defaultComparator(first, second);
-        };
-
-        var store = vivaldi.jdhooks.require("_BookmarkStore");
-        var data = clone(store.getTopNodes ? store.getTopNodes() : store.getBookmarksData());
-
-        if (bookmarkSorting.sortOrder != treeSort.NO_SORTING)
-            treeSort.treeSort(data, comparator);
-        this.refs.hiddenBookmarksBar.state.renderedArray = data.filter(function(o) {
-            return !o.trash
-        });
-        vivaldi.jdhooks.require("_ShowMenu")(this.refs.hiddenBookmarksBar.getExtenderMenuItems(), null, "bottom", this.refs.bookmarksButton)(e);
+        let idx = menu.findIndex(i => i.labelEnglish == "Bookmarks")
+        if (idx > -1) {
+            const rect = event.target.getBoundingClientRect()
+            const props = {
+                id: 0,
+                rect: {
+                    x: parseInt(rect.left),
+                    y: parseInt(rect.top),
+                    width: parseInt(rect.width),
+                    height: parseInt(rect.height)
+                },
+                menu: { items: menu[idx].items }
+            }
+            ShowMenu.show(props.id, [props], "bottom")
+        }
     }
 
+    vivaldi.jdhooks.hookClass("createbookmark_createbookmark", origClass => {
+        const ReactDom = vivaldi.jdhooks.require("ReactDOM")
 
-    function newRender(hookData) {
-        var findRef = function(ref) {
-            if (hookData.retValue.props.children)
-                for (var i = 0; i < hookData.retValue.props.children.length; i++) {
-                    if (hookData.retValue.props.children[i])
-                        if (hookData.retValue.props.children[i].ref === ref)
-                            return i;
-                }
-            return false;
-        };
-
-        var itm = findRef("addressfield");
-        if (itm !== false) {
-
-            var React = vivaldi.jdhooks.require("react_React");
-
-            hookData.retValue.props.children.splice(itm, 0,
-                React.createElement(
-                    "div", {
-                        className: "button-toolbar bookmarksbutton",
-                        onClick: bookmarksOnClick.bind(this),
-                            ref: "bookmarksButton"
+        class newCreateBookmarkButton extends origClass {
+            constructor(...e) {
+                super(...e)
+                this.bookmarksButtonJs = {
+                    pointerUp: (e => {
+                        if (e.button == 2 && this.state.jdVivaldiSettings.BOOKMARK_BUTTON_POSITION == position.addressfield) {
+                            bookmarksOnClick(e)
                         }
+                    }).bind(this)
+                }
+            }
 
-                        , React.createElement("div", {
-                                style: {
-                                    width: 0,
-                                    zIndex: -1
-                                }
-                            },
-                            React.createElement(vivaldi.jdhooks.require("BookmarksBar"), {
-                                ref: "hiddenBookmarksBar",
+            componentDidMount() {
+                if (super.componentDidMount) super.componentDidMount()
+
+                const button = ReactDom.findDOMNode(this)
+                if (button) button.addEventListener("pointerup", this.bookmarksButtonJs.pointerUp, true)
+            }
+
+            componentWillUnmount() {
+                const button = ReactDom.findDOMNode(this)
+                if (button) button.removeEventListener("pointerup", this.bookmarksButtonJs.pointerUp, true)
+
+                if (super.componentWillUnmount) super.componentWillUnmount()
+            }
+        }
+        return vivaldi.jdhooks.insertWatcher(newCreateBookmarkButton, { settings: ["BOOKMARK_BUTTON_POSITION"] })
+    })
+
+    vivaldi.jdhooks.hookClass("toolbars_Toolbar", origClass => {
+        const React = vivaldi.jdhooks.require("React")
+        const SettingsPaths = vivaldi.jdhooks.require("_PrefKeys")
+        const ToolbarButton = vivaldi.jdhooks.require("toolbars_ToolbarButton")
+
+        class newClass extends origClass {
+            render() {
+                let ret = super.render()
+                if (this.props.name == SettingsPaths.kToolbarsNavigation) {
+                    ret.props.children.push(
+                        this.state.jdVivaldiSettings.BOOKMARK_BUTTON_POSITION == position.separate &&
+                            this.state.jdPrefs[SettingsPaths.kMenuDisplay] != "top"
+
+                            ? React.createElement(ToolbarButton, {
+                                tooltip: "Bookmarks",
+                                onClick: bookmarksOnClick,
+                                image: vivaldi.jdhooks.require("_svg_bookmarks_large")
                             })
-                        )
 
-                        , React.createElement("div", {
-                            className: "button-toolbar",
-                            dangerouslySetInnerHTML: {
-                                __html: vivaldi.jdhooks.require("_svg_panel_bookmarks")
-                            }
-                        })
+                            : null
                     )
+                }
+                return ret
+            }
+        }
+        return vivaldi.jdhooks.insertWatcher(newClass, {
+            settings: ["BOOKMARK_BUTTON_POSITION"],
+            prefs: [SettingsPaths.kMenuDisplay]
+        })
+    })
 
-            );
+    vivaldi.jdhooks.hookClass("settings_bookmarks_BookmarkSettings", origClass => {
+        const React = vivaldi.jdhooks.require("React")
+        const RadioGroup = vivaldi.jdhooks.require("common_RadioGroup")
+        const VivaldiSettings = vivaldi.jdhooks.require("vivaldiSettings")
+        const Settings_SettingsSearchCategoryChild = vivaldi.jdhooks.require("settings_SettingsSearchCategoryChild")
+
+        function toArray(i) {
+            if (Array.isArray(i)) return i;
+            return [i];
         }
 
-        return hookData.retValue;
-    }
+        const Setting = vivaldi.jdhooks.insertWatcher(class extends React.PureComponent {
+            render() {
+                return React.createElement(Settings_SettingsSearchCategoryChild, { filter: this.props.filter },
+                    React.createElement("div", { className: "setting-group" },
+                        React.createElement("h3", {}, "Bookmark Button"),
+                        React.createElement(RadioGroup,
+                            {
+                                name: "bookmark_button_position",
+                                value: this.state.jdVivaldiSettings.BOOKMARK_BUTTON_POSITION,
+                                onChange: (evt) => VivaldiSettings.set({ BOOKMARK_BUTTON_POSITION: evt.target.value })
+                            },
+                            React.createElement("div", { className: "setting-single" },
+                                React.createElement("label", {},
+                                    React.createElement("input",
+                                        {
+                                            type: "radio",
+                                            value: position.separate,
+                                        }),
+                                    React.createElement("span", {}, "Separate button")
+                                )
+                            ),
+                            React.createElement("div", { className: "setting-single" },
+                                React.createElement("label", {},
+                                    React.createElement("input",
+                                        {
+                                            type: "radio",
+                                            value: position.addressfield,
+                                        }),
+                                    React.createElement("span", {},
+                                        'Right click on "Add bookmark" button in the address field'
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
+            }
+        }, { settings: ["BOOKMARK_BUTTON_POSITION"] })
 
-
-    vivaldi.jdhooks.hookSettingsWrapper("UrlBar", function(fn, settingsKeys) {
-        vivaldi.jdhooks.hookMember(fn.prototype, "render", null, newRender);
-    });
-
-})();
+        return class extends origClass {
+            render() {
+                let r = super.render()
+                r.props.children = toArray(r.props.children)
+                r.props.children.push(React.createElement(Setting, this.props))
+                return r
+            }
+        }
+    })
+}
