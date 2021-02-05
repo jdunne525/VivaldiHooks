@@ -34,7 +34,7 @@
 }
 #browser.tabs-bottom .tab-strip > span > .tab-position > .tab:not(.pinned),
 #browser.tabs-top .tab-strip > span > .tab-position > .tab:not(.pinned) {
-  width: 220px !important;
+  width: 150px !important;
 }
 #browser.tabs-bottom .tab-strip > span > .tab-position > .tab.pinned,
 #browser.tabs-top .tab-strip > span > .tab-position > .tab.pinned {

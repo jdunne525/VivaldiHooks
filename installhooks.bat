@@ -29,10 +29,8 @@ if (-Not $vivpath) {
   write-warning "Can't find Vivaldi installation path"
 }
 else {
-  Try {?#New version from upstream.. not sure if this is necessary..
-#    $dstdir = split-path ((Get-ChildItem -path $vivpath -r background-bundle.js | Sort-Object -property CreationTime -descending | Select-Object -first 1).FullName)
-
-    $dstdir = split-path ((ls -path $vivpath -r bundle.js | sort -property CreationTime -descending | select -first 1).FullName)
+  Try {
+    $dstdir = split-path ((Get-ChildItem -path $vivpath -r background-bundle.js | Sort-Object -property CreationTime -descending | Select-Object -first 1).FullName)
     write-host "Destination directory: $dstdir"
 
     $encoding = (New-Object System.Text.UTF8Encoding($False))
