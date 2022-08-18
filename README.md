@@ -7,7 +7,7 @@ The multi-line tabs implementation is still working very well as of 8/18/2022.
 See the following thread for other implementations:
 https://forum.vivaldi.net/topic/25453/multiple-row-tabs/177?lang=en-US&page=9
 
-
+Instructions for how to install multiline-tabs:
 * Open vivaldi://experiments
 * Enable "Allow for using CSS modifications"
 * Open Appearance section in settings
