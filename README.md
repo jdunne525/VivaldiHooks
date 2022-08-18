@@ -1,76 +1,17 @@
-# VivaldiHooks
-[![License: WTFPL](https://img.shields.io/badge/License-WTFPL-brightgreen.svg)](http://www.wtfpl.net/about/)
+This project used to contain various hooks for Vivaldi and a method of loading them as written by justdanpo / VivaldiHooks.  
 
-8/30/2018 jdunne - jdhooks.js has been broken for a long time.  I created load_hooks.js, which is a stupid simple version that just loads the .js file
-directly without any fancy stuff.  The only hook I use is multi-line-tabs.css.  If you want to load a different one, just edit load_hooks.js and add it.
-Good luck.
+Vivaldi at some point added an option to allow CSS modifications, which makes this project easier to use and maintain.
+At this point I've decided to clean everything out and just leave the multiline-tabs.css which is the only "hook" I still use.
+The multi-line tabs implementation is still working very well as of 8/18/2022.
 
-## About
-VivaldiHooks is a set of hooks/scripts for Vivaldi browser modding.
-The main one - `jdhooks.js` - controlls mods loading and provides mod developers a way to change behaviour of Vivaldi internal components.
+See the following thread for other implementations:
+https://forum.vivaldi.net/topic/25453/multiple-row-tabs/177?lang=en-US&page=9
 
-See Wiki for [hooks descriptions](https://github.com/justdanpo/VivaldiHooks/wiki/Hooks) or [developers' howto](https://github.com/justdanpo/VivaldiHooks/wiki/Howto-dev).
 
-## Installation
-### Automatic (Windows only)
-Just run **installhooks.bat**. It will find installation path automatically if Vivaldi is set as your default browser.
+* Open vivaldi://experiments
+* Enable "Allow for using CSS modifications"
+* Open Appearance section in settings
+* Choose the folder you want to use
+* Place your CSS files inside it
+* Restart Vivaldi to see them in effect
 
-If Vivaldi is installed in "Program Files" or any other write-restricted folder, you must run the script as Administrator.
-
-You may specify a path in a command line:
-
-    installhooks.bat C:\programz\Vivaldi-snapshots\1.5.609.8\Application
-    installhooks.bat "C:\some path with spaces\Vivaldi\Application"
-    installhooks.bat -nowait C:\programz\Vivaldi-snapshots\1.5.609.8\Application
-
-Another easy way: drag Vivaldi directory and drop it on **installhooks.bat**.
-
-### Manual
-
-First of all, find Vivaldi installation folder (**{instdir}**):
-
-- Windows: `Vivaldi\Application\{version}\resources`
-- Linux: `/opt/vivaldi/resources` or `/opt/vivaldi-snapshot/resources`
-- MacOS: `/Applications/Vivaldi.app/Contents/Versions/{version}/Vivaldi Framework.framework/Resources`
-
-Copy **vivaldi** folder into **{instdir}**
-
-Or if you want to keep mods you've installed into **browser.html**, copy **vivaldi\hooks** folder and **vivaldi\jdhooks.js** into **{instdir}\vivaldi**, open **{instdir}\vivaldi\browser.html** in a text editor, add line
-
-    <script src="jdhooks.js"></script>
-
-right before a line with **bundle.js**.
-
-You may need to chmod new/updated files.
-
-## Deinstallation
-
-If some hooks cause Vivaldi to crash, you can remove just hook files.
-
-The easiest way to "uninstall"/disable VivaldiHooks is to delete **{instdir}\vivaldi\jdhooks.js**.
-
-## Screenshots
-
-### [bookmarks-button.js](vivaldi/hooks/bookmarks-button.js)
-
-![bookmarks-button.png](screenshots/bookmarks-button.png)
-
-### [go-button.js](vivaldi/hooks/go-button.js)
-
-![go-button.png](screenshots/go-button.png)
-
-### [move-window-buttons-maximized.js](vivaldi/hooks/move-window-buttons-maximized.js)
-
-![move-window-buttons-maximized.png](screenshots/move-window-buttons-maximized.png)
-
-### [qc-close-tab.js](vivaldi/hooks/qc-close-tab.js)
-
-![qc-close-tab.png](screenshots/qc-close-tab.png)
-
-### [speeddial-shortcuts.js](vivaldi/hooks/speeddial-shortcuts.js)
-
-![speeddial-shortcuts.png](screenshots/speeddial-shortcuts.png)
-
-### [jdhooks-startup-settings.js](vivaldi/hooks/jdhooks-startup-settings.js)
-
-![jdhooks-startup-settings.png](screenshots/jdhooks-startup-settings.png)
