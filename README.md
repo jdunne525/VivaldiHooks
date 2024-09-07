@@ -1,11 +1,10 @@
 This project used to contain various hooks for Vivaldi and a method of loading them as written by justdanpo / VivaldiHooks.  
 
-Vivaldi at some point added an option to allow CSS modifications, which makes this project easier to use and maintain.
-At this point I've decided to clean everything out and just leave the multiline-tabs.css which is the only "hook" I still use.
-The multi-line tabs implementation is still working very well as of 8/18/2022.
-
-See the following thread for other implementations:
-https://forum.vivaldi.net/topic/25453/multiple-row-tabs/177?lang=en-US&page=9
+New version as of 9/6/2024:
+The old multiline-tabs stopped working in September 2024, so I'm changing to a new version created by Hababr on the vivaldi forums.  
+At this point this repo is just storing whatever version I'm currently using of this script.
+Code is from here:
+https://forum.vivaldi.net/post/706823
 
 Instructions for how to install multiline-tabs:
 * Open vivaldi://experiments

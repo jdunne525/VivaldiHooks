@@ -1,0 +1,128 @@
+/*
+Taken from here:  https://forum.vivaldi.net/post/706823
+  Multiple Row Tabs - Created by @hababr. Version 2024.09.05.
+  Base on work of and inspired by @nomadic, @fpdragon, @potmeklecbohdan, @alexander.gorbovets, @barbudo2005.
+*/
+
+/* Configuration */
+:root {
+  /* That will be the minimum width of a tab. You can adjust the number as you like. */
+  --mrt-min-width: 95px;
+}
+#tabs-subcontainer {
+  --mrt-min-width: 102px;
+}
+.tab-strip.horizontal-scrolling {
+  /* That will be the tab width is case Horizontal Scrolling is enabled. */
+  --mrt-hs-width: 50px;
+}
+
+/* Changes to allow multi row tab bar */
+#browser:is(.tabs-top, .tabs-bottom) #tabs-tabbar-container {
+  height: auto !important;
+}
+
+/* Fix overflow issue on secondary bar */
+#browser:is(.tabs-top, .tabs-bottom) #tabs-subcontainer {
+  flex-basis: unset !important;
+}
+
+#browser:is(.tabs-top, .tabs-bottom) .tab-strip {
+  display: flex;
+  flex-wrap: wrap;
+  row-gap: 1px;
+  column-gap: 1px;
+}
+
+#browser:is(.tabs-top, .tabs-bottom) .tab-strip > span,
+#browser:is(.tabs-top, .tabs-bottom) .tab-strip > .tab-position {
+  /*display: inline-block;*/
+  display: flex;
+  position: relative;
+  height: 30px;
+  --PositionX: 0px !important;
+}
+
+#browser:is(.tabs-top, .tabs-bottom) .tab-position.tab-yield-space {
+  --PositionX: 0px !important;
+  height: 30px !important;
+}
+
+#browser:is(.tabs-top, .tabs-bottom) .tab-strip > span > .tab-position {
+  --PositionX: 0px !important;
+  height: 30px !important;
+}
+
+/*#browser:is(.tabs-top, .tabs-bottom) .tab-strip > span > .tab-position:is([style*="--Height: 150px;"]),*/
+#browser:is(.tabs-top, .tabs-bottom) .tab-position.tab-yield-space:not(.is-pinned),
+#browser:is(.tabs-top, .tabs-bottom) #tabs-subcontainer .tab-strip > span > .tab-position,
+#browser:is(.tabs-top, .tabs-bottom) #tabs-container .tab-strip > span > .tab-position:not(.is-pinned) {
+  --Width2: var(--mrt-hs-width, var(--Width));
+  min-width: min(var(--mrt-min-width), var(--Width2)*99999) !important;
+  width: var(--Width2);  
+}
+
+#browser:is(.tabs-top, .tabs-bottom) .tab-strip > span > .tab-position,
+.toolbar-tabbar > .newtab {
+  position: static !important;
+}
+
+/* Keep title visible on tabs */
+#browser:is(.tabs-top, .tabs-bottom) .tab.tab-small .tab-header .title {
+  display: flex !important;
+}
+
+/* Keep tab stack counter visible  */
+#browser:is(.tabs-top, .tabs-bottom) .tab-position .tab.tab-small .stack-counter {
+  display: block !important;
+}
+
+/* Keep tab header style */
+#browser:is(.tabs-top, .tabs-bottom) .tab.tab-small.tab-mini .tab-header,
+#browser:is(.tabs-top, .tabs-bottom) .tab.pinned.tab-mini .tab-header {
+  padding-left: 6px !important;
+  border: none !important;
+  justify-content: normal !important;
+}
+
+/* Fix width for tab stack border when selected */
+#browser:is(.tabs-top, .tabs-bottom) .tab-strip > span > .tab-position:not([style*="--Width: 0px"]) .tab {
+  --Width2: max(100%, var(--mrt-min-width));
+  max-width: var(--Width2);
+  max-height: calc(100% + 1px);
+}
+/*#browser:is(.tabs-top, .tabs-bottom) .tab-position:not(.is-substack) .svg-tab-stack, .tabs-top .svg-tab-selection {*/
+#browser:is(.tabs-top, .tabs-bottom) .tab-position:not(.is-pinned) .svg-tab-stack,
+#browser:is(.tabs-top, .tabs-bottom) .tab-position:not(.is-pinned) .tab-header,
+.tabs-top .svg-tab-selection {
+  width: calc(var(--Width2) + 0px) !important;
+  max-width: var(--Width2) !important;
+}
+
+#browser:not(.alt-tabs, .tabs-left, .tabs-right) .tab-position .tab:hover.tab-small.active .favicon {
+  flex-shrink: 0 !important;
+}
+
+/* When tab scrolling is enabled */
+.horizontal-scroll-arrow {
+  padding: 0 !important;
+}
+
+#tabs-container .resize > .toolbar.toolbar-tabbar,
+#tabs-subcontainer > .toolbar.toolbar-tabbar {
+    flex-shrink: 0;
+}
+
+/* Fix tabs popup closes when mouse is over empty area */
+#browser:is(.tabs-top, .tabs-bottom) .tab-strip > .toolbar {
+  flex-grow: 1;
+}
+
+/* Hide the icon of pinned tab stacks */
+.is-substack.is-pinned span.favicon,
+.is-substack.is-pinned .stack-counter {
+    display: none !important;
+}
+.is-substack.is-pinned .tab-header {
+    padding-left: 2px;
+}
