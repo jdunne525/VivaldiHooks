@@ -7,7 +7,7 @@ Taken from here:  https://forum.vivaldi.net/post/706823
 /* Configuration */
 :root {
   /* That will be the minimum width of a tab. You can adjust the number as you like. */
-  --mrt-min-width: 95px;
+  --mrt-min-width: 110px;
 }
 #tabs-subcontainer {
   --mrt-min-width: 102px;
