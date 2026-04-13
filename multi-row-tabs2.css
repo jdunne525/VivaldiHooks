@@ -1,128 +1,603 @@
 /*
-Taken from here:  https://forum.vivaldi.net/post/706823
-  Multiple Row Tabs - Created by @hababr. Version 2024.09.05.
-  Base on work of and inspired by @nomadic, @fpdragon, @potmeklecbohdan, @alexander.gorbovets, @barbudo2005.
+Taken from here:  https://forum.vivaldi.net/topic/101084/css-mod-multi-row-tabs-and-more
+* Note I changed the min width to 110 per my preference
 */
 
-/* Configuration */
-:root {
-  /* That will be the minimum width of a tab. You can adjust the number as you like. */
-  --mrt-min-width: 110px;
-}
-#tabs-subcontainer {
-  --mrt-min-width: 102px;
-}
-.tab-strip.horizontal-scrolling {
-  /* That will be the tab width is case Horizontal Scrolling is enabled. */
-  --mrt-hs-width: 50px;
+/*
+ * Multiple Row Tabs v2 - Created by @hababr
+ * Version 2026.01.22
+ */
+
+/*******************
+ *  Configuration  *
+ *******************/
+  :root {
+    /* That will be the minimum and maximum width of a tab */
+    --mrt-min-width: 110px;
+    --mrt-max-width: 200px;
+
+    /* Change to 'true' to enable scrollbars for tabs
+       Works better with 'Use Simple Scrollbars' enabled and 'Switch Tabs by Scrolling' disabled in Vivaldi settings */
+    --mrt-scrollbars: false;
+    /* Maximum row count after which scrollbars appear if enabled on the previous line */
+    --mrt-max-rows: 2.5;
+
+    /* Change to 'true' to hide window control buttons and stretch tabs to full window width */
+    --mrt-full-width: false;
+
+    /* Width of a pinned tab/stack, remove or comment out to use same size as for normal tabs */
+    --mrt-pinned-width: 30px;
+    --mrt-pinned-stack-width: 60px;
+    --mrt-pinned-extended-accordion-width: 90px;
+
+    /* Height of a tab */
+    --mrt-tab-height: 30px;
+
+    /* Display tab close buttons. 1 - on hover, 2 - permanently. Must be enabled in setting also.*/
+    --mrt-tab-close: 1;
+
+    /* Width of the Workspace button */
+    --mrt-workspace-button-width: 130px;
+  }
+  #tabs-subcontainer {
+    /* Width of tabs inside of the second level tab bar */
+    --mrt-min-width: 150px;
+    --mrt-max-width: 300px;
+  }
+/******************/
+
+#browser:is(.tabs-top, .tabs-bottom) {
+  --mrt-toolbar-before-width: 0px;
+  --mrt-toolbar-after-width: 0px;
 }
 
-/* Changes to allow multi row tab bar */
+#browser:is(.tabs-top, .tabs-bottom) .window-buttongroup {
+  height: var(--mrt-tab-height) !important;
+}
+#browser:is(.tabs-top, .tabs-bottom) .topmenu .window-buttongroup {
+  max-height: 100%;
+}
+#browser:is(.tabs-top, .tabs-bottom) .window-buttongroup button {
+  height: 100% !important;
+  min-height: min(100%, var(--mrt-tab-height));
+}
+
 #browser:is(.tabs-top, .tabs-bottom) #tabs-tabbar-container {
   height: auto !important;
 }
+#browser.tabs-top.density-on.maximized #tabs-tabbar-container {
+  padding-top: var(--densityGap);
+  padding-bottom: var(--densityGap);
+}
+#browser.tabs-top.density-on #tabs-tabbar-container:has(#tabs-subcontainer) {
+  padding-bottom: 0;
+}
+#browser.tabs-top.address-top.win:not(.fullscreen, .disable-titlebar) #header {
+  min-height: calc((var(--mrt-tab-height) + var(--densityGap) * 2) / var(--uiZoomLevel));
+}
+#browser:is(.tabs-top, .tabs-bottom) .vivaldi {
+  position: absolute;
+  height: var(--mrt-tab-height);
+  left: 1px;
+}
+#browser:is(.tabs-top, .tabs-bottom).density-on .vivaldi {
+  left: var(--densityGap);
+  margin-top: calc(2 * var(--densityGap));
+}
+#browser:is(.tabs-top, .tabs-bottom).density-on.maximized .vivaldi {
+  margin-top: var(--densityGap);
+  left: unset;
+}
 
-/* Fix overflow issue on secondary bar */
+/* Margin for the first tab */
+#browser:is(.tabs-top, .tabs-bottom):not(.horizontal-menu) #tabs-container.top {
+  padding-left: 0;
+}
+#browser:is(.tabs-top, .tabs-bottom) #tabs-container .tab-strip:before {
+  content: '';
+  width: var(--mrt-toolbar-before-width);
+  display: block;
+  -webkit-app-region: no-drag;
+}
+
+#browser:is(.tabs-top, .tabs-bottom) #header .tabbar-wrapper {
+  z-index: 0;
+}
+#browser.tabs-top.maximized:not(.mac, .tabs-at-edge) .tab-wrapper::before {
+  height: calc(2 * var(--densityGap)) !important;
+  top: calc(-2 * var(--densityGap)) !important;
+}
+#browser.tabs-top.density-on .tab-wrapper:after {
+  height: var(--densityGap) !important;
+  bottom: calc(-1 * var(--densityGap)) !important;
+}
 #browser:is(.tabs-top, .tabs-bottom) #tabs-subcontainer {
   flex-basis: unset !important;
+  min-height: var(--mrt-tab-height);
+  -webkit-app-region: no-drag !important;
+}
+#browser.tabs-top.horizontal-menu.win .topmenu {
+  margin-bottom: 4px;
 }
 
 #browser:is(.tabs-top, .tabs-bottom) .tab-strip {
   display: flex;
   flex-wrap: wrap;
-  row-gap: 1px;
+  flex-grow: 1;
   column-gap: 1px;
+  row-gap: 1px;
+  -webkit-app-region: drag;
+  align-content: flex-start;
 }
 
-#browser:is(.tabs-top, .tabs-bottom) .tab-strip > span,
-#browser:is(.tabs-top, .tabs-bottom) .tab-strip > .tab-position {
-  /*display: inline-block;*/
-  display: flex;
+#browser:is(.tabs-top):not(.density-on) .tab-strip {
+  padding-bottom: 1px;
+}
+
+#browser:is(.tabs-top, .tabs-bottom).density-on .tab-strip {
+  column-gap: var(--densityGap);
+  row-gap: var(--densityGap);
+}
+
+#browser:is(.tabs-top, .tabs-bottom) #tabs-container .tab-strip {
+  padding-right: calc(var(--densityGap, 0px) + 2px);
+}
+
+#browser:is(.tabs-top).density-on:has(#tabs-subcontainer) #tabs-container .tab-strip {
+  padding-bottom: var(--densityGap);
+}
+
+#browser:is(.tabs-top, .tabs-bottom).density-on.maximized #tabs-container .tab-strip {
+  row-gap: var(--densityGap);
+}
+
+#browser:is(.tabs-top, .tabs-bottom) #tabs-container,
+#browser:is(.tabs-top, .tabs-bottom) #tabs-subcontainer {
+  padding-bottom: 0 !important;
+}
+
+#browser:is(.tabs-top):not(.density-on) #tabs-subcontainer {
+  padding-top: 0px;
+  border-top: 1px solid var(--colorAccentFgFaded);
+}
+#browser:is(.tabs-bottom):not(.density-on) #tabs-subcontainer {
+  padding-bottom: 0px;
+  border-bottom: 1px solid var(--colorAccentFgFaded);
+}
+
+#browser:is(.tabs-top, .tabs-bottom) #tabs-tabbar-container.top.dotted #tabs-container .tab-strip > span {
+  margin-top: 5px;
+}
+#browser:is(.tabs-top, .tabs-bottom) #tabs-tabbar-container.bottom.dotted #tabs-container .tab-strip > span {
+  margin-bottom: 5px;
+}
+#browser:is(.tabs-top, .tabs-bottom) #tabs-tabbar-container.top.dotted #tabs-container .tab-strip {
+  margin-top: -5px;
+}
+#browser:is(.tabs-top, .tabs-bottom).density-on #tabs-tabbar-container.top.dotted #tabs-container .tab-strip {
+  margin-top: -2px;
+}
+
+#browser:is(.tabs-top, .tabs-bottom) .tab-strip > :is(span, .tab-yield-space) {
+  min-width: var(--mrt-min-width);
+  width: auto;
+  display: inline-block;
   position: relative;
-  height: 30px;
-  --PositionX: 0px !important;
+  height: fit-content;
+  max-width: var(--mrt-max-width);
+  flex-grow: 10;
+  flex-basis: var(--mrt-min-width);
+  -webkit-app-region: no-drag;
 }
 
-#browser:is(.tabs-top, .tabs-bottom) .tab-position.tab-yield-space {
-  --PositionX: 0px !important;
-  height: 30px !important;
+/* Avoid tabs jumping around while dragging a tab */
+#browser:is(.tabs-top, .tabs-bottom).no-app-dragging .tab-strip:not(:has(.tab-yield-space)) > span:last-of-type {
+  min-width: calc(var(--mrt-min-width) * 2);
+  max-width: var(--mrt-max-width);
+}
+#browser:is(.tabs-top, .tabs-bottom) #tabs-container .tab-strip > :is(span:last-of-type:not(:has(+ .tab-yield-space)), .tab-yield-space:not(:has(+ span))) {
+  margin-right: calc(var(--mrt-toolbar-after-width) + 2px);
+}
+#browser:is(.tabs-top, .tabs-bottom) #tabs-container .tab-strip > span:last-of-type:has(+ .accordion-toggle-arrow) {
+  margin-right: calc(var(--mrt-toolbar-after-width) + 3px + 16px + var(--densityGap));
+}
+#browser:is(.tabs-top, .tabs-bottom) #tabs-container .tab-strip > span:last-of-type + .accordion-toggle-arrow {
+  margin-left: calc(-1 * var(--mrt-toolbar-after-width) - 3px - 16px - var(--densityGap));
+  margin-right: calc(var(--mrt-toolbar-after-width) + 2px);
 }
 
-#browser:is(.tabs-top, .tabs-bottom) .tab-strip > span > .tab-position {
-  --PositionX: 0px !important;
-  height: 30px !important;
+#browser:is(.tabs-top, .tabs-bottom) #tabs-subcontainer .tab-strip > :is(span:last-of-type:not(:has(+ .tab-yield-space)), .tab-yield-space:not(:has(+ span))) {
+  margin-right: 61px;
 }
 
-/*#browser:is(.tabs-top, .tabs-bottom) .tab-strip > span > .tab-position:is([style*="--Height: 150px;"]),*/
-#browser:is(.tabs-top, .tabs-bottom) .tab-position.tab-yield-space:not(.is-pinned),
-#browser:is(.tabs-top, .tabs-bottom) #tabs-subcontainer .tab-strip > span > .tab-position,
-#browser:is(.tabs-top, .tabs-bottom) #tabs-container .tab-strip > span > .tab-position:not(.is-pinned) {
-  --Width2: var(--mrt-hs-width, var(--Width));
-  min-width: min(var(--mrt-min-width), var(--Width2)*99999) !important;
-  width: var(--Width2);  
-}
-
-#browser:is(.tabs-top, .tabs-bottom) .tab-strip > span > .tab-position,
-.toolbar-tabbar > .newtab {
-  position: static !important;
-}
-
-/* Keep title visible on tabs */
-#browser:is(.tabs-top, .tabs-bottom) .tab.tab-small .tab-header .title {
-  display: flex !important;
-}
-
-/* Keep tab stack counter visible  */
-#browser:is(.tabs-top, .tabs-bottom) .tab-position .tab.tab-small .stack-counter {
+#browser:is(.tabs-top, .tabs-bottom) .stack-counter {
   display: block !important;
 }
 
-/* Keep tab header style */
-#browser:is(.tabs-top, .tabs-bottom) .tab.tab-small.tab-mini .tab-header,
-#browser:is(.tabs-top, .tabs-bottom) .tab.pinned.tab-mini .tab-header {
-  padding-left: 6px !important;
-  border: none !important;
-  justify-content: normal !important;
+#browser:is(.tabs-top, .tabs-bottom) span > .tab-position {
+  position: relative !important;
+  height: fit-content;
+  width: 100%;
+  transform: none;
+  will-change: unset;
 }
 
-/* Fix width for tab stack border when selected */
-#browser:is(.tabs-top, .tabs-bottom) .tab-strip > span > .tab-position:not([style*="--Width: 0px"]) .tab {
-  --Width2: max(100%, var(--mrt-min-width));
-  max-width: var(--Width2);
-  max-height: calc(100% + 1px);
-}
-/*#browser:is(.tabs-top, .tabs-bottom) .tab-position:not(.is-substack) .svg-tab-stack, .tabs-top .svg-tab-selection {*/
-#browser:is(.tabs-top, .tabs-bottom) .tab-position:not(.is-pinned) .svg-tab-stack,
-#browser:is(.tabs-top, .tabs-bottom) .tab-position:not(.is-pinned) .tab-header,
-.tabs-top .svg-tab-selection {
-  width: calc(var(--Width2) + 0px) !important;
-  max-width: var(--Width2) !important;
+#browser:is(.tabs-top, .tabs-bottom) .tab-position.tab-yield-space {
+  position: relative;
+  transform: none;
+  height: var(--mrt-tab-height);
+  min-width: var(--mrt-min-width);
 }
 
-#browser:not(.alt-tabs, .tabs-left, .tabs-right) .tab-position .tab:hover.tab-small.active .favicon {
-  flex-shrink: 0 !important;
+#browser:is(.tabs-top):not(.density-on) .tab-position:not(.is-substack) .tab.active:not(.tab-in-accordion, .tab-accordion) {
+  height: calc(var(--mrt-tab-height) + 1px) !important;
+  translate: 0 1px;
+  margin-top: -1px;
+}
+#browser:is(.tabs-bottom):not(.density-on) #tabs-tabbar-container #tabs-container .tab.active.tab-in-accordion {
+  top: 0 !important;
+  padding-top: 0;
+}
+#browser:is(.tabs-top, .tabs-bottom) .tab-strip .tab.active:is(.tab-in-accordion, .tab-accordion):before,
+#browser:is(.tabs-top, .tabs-bottom) .tab-strip .tab.active:is(.tab-in-accordion, .tab-accordion):after {
+  opacity: 0;
+}
+#browser:is(.tabs-bottom) #tabs-tabbar-container:not(:has(#tabs-subcontainer)) #tabs-container .tab.active.tab-accordion {
+  padding-top: 0;
+  top: 0 !important;
 }
 
-/* When tab scrolling is enabled */
-.horizontal-scroll-arrow {
-  padding: 0 !important;
+#browser:is(.tabs-top, .tabs-bottom) .tab-position .tab-wrapper {
+  margin: 0;
+  max-height: unset;
 }
 
-#tabs-container .resize > .toolbar.toolbar-tabbar,
-#tabs-subcontainer > .toolbar.toolbar-tabbar {
-    flex-shrink: 0;
+#browser:is(.tabs-top, .tabs-bottom) .tab-position .tab {
+  width: 100%;
+  max-width: 100% !important;
+  height: var(--mrt-tab-height) !important;
 }
 
-/* Fix tabs popup closes when mouse is over empty area */
-#browser:is(.tabs-top, .tabs-bottom) .tab-strip > .toolbar {
+#browser:is(.tabs-top, .tabs-bottom) .tab-position .tab .tab-header {
+  padding-left: 6px;
+}
+
+#browser:is(.tabs-top, .tabs-bottom) .svg-tab-selection,
+#browser:is(.tabs-top, .tabs-bottom) .tab-position .tab .tab-header {
+  width: 100% !important;
+  max-width: 100%;
+  max-height: 100%;
+  flex-basis: 100%;
+  z-index: 20;
+  height: 100%;
+}
+
+#browser:is(.tabs-top, .tabs-bottom) .tab:not(.tab-accordion, .tab-in-accordion) ~ .svg-tab-stack,
+#browser:is(.tabs-top, .tabs-bottom) .tab:not(.tab-accordion, .tab-in-accordion) .svg-tab-stack {
+  max-width: unset;
+  width: 100%;
+}
+
+#browser:is(.tabs-top, .tabs-bottom) #tabs-container .tab-strip > span:has(> .is-pinned) {
+  max-width: var(--mrt-pinned-width, var(--mrt-max-width));
+  min-width: var(--mrt-pinned-width, var(--mrt-min-width));
+}
+
+#browser:is(.tabs-top, .tabs-bottom) #tabs-container .tab-strip > span:has(> .is-pinned.is-substack, > .is-pinned .accordion, > .is-pinned .group) {
+  max-width: var(--mrt-pinned-stack-width, var(--mrt-max-width));
+  min-width: var(--mrt-pinned-stack-width, var(--mrt-min-width));
+}
+
+#browser:is(.tabs-top, .tabs-bottom) #tabs-container .tab-strip > span:has(.is-pinned .extended.in-accordion) {
+  max-width: var(--mrt-pinned-extended-accordion-width);
+  min-width: var(--mrt-pinned-extended-accordion-width);
+}
+
+/* Hide horizontal scrolling buttons */
+#browser:is(.tabs-top, .tabs-bottom) .button-toolbar.horizontal-scroll-arrow {
+    display: none;
+}
+
+#browser:is(.tabs-top, .tabs-bottom) .toolbar-tabbar.tab-position {
+  position: relative;
+  transform: none;
   flex-grow: 1;
+  flex-basis: 0;
+  min-width: fit-content;
 }
 
-/* Hide the icon of pinned tab stacks */
-.is-substack.is-pinned span.favicon,
-.is-substack.is-pinned .stack-counter {
-    display: none !important;
+#browser:is(.tabs-top, .tabs-bottom) .toolbar-tabbar .button-toolbar {
+  position: relative;
+  left: unset !important;
+  top: unset !important;
+  height: var(--mrt-tab-height);
 }
-.is-substack.is-pinned .tab-header {
-    padding-left: 2px;
+
+#browser:is(.tabs-top, .tabs-bottom) #tabs-container .tab.tab-small.tab-mini .tab-header {
+  justify-content: unset;
+  padding-left: 6px;
+}
+
+#browser:is(.tabs-top, .tabs-bottom) .tab .tab-header .title {
+  display: flex !important;
+}
+#browser:is(.tabs-top, .tabs-bottom) .tab-position:not(.is-substack) .tab-wrapper:not(.extended.in-accordion) .tab.pinned:not(.tab-accordion) .tab-header .title {
+  display: none !important;
+}
+#browser:is(.tabs-top, .tabs-bottom) .tab-position:not(.is-substack) .tab-wrapper:not(.extended.in-accordion) .tab.pinned:not(.tab-accordion) .tab-header {
+  padding: 0;
+  justify-content: center;
+}
+
+/* Toolbars */
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-after > :nth-child(1)) { --mrt-toolbar-after-btns: 1; }
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-after > :nth-child(2)) { --mrt-toolbar-after-btns: 2; }
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-after > :nth-child(3)) { --mrt-toolbar-after-btns: 3; }
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-after > :nth-child(4)) { --mrt-toolbar-after-btns: 4; }
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-after > :nth-child(5)) { --mrt-toolbar-after-btns: 5; }
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-after > :nth-child(6)) { --mrt-toolbar-after-btns: 6; }
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-after > :nth-child(7)) { --mrt-toolbar-after-btns: 7; }
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-after > :nth-child(8)) { --mrt-toolbar-after-btns: 8; }
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-after > :nth-child(9)) { --mrt-toolbar-after-btns: 9; }
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-after > :nth-child(1 of .toolbar-divider)) { --mrt-toolbar-after-divs: 1; }
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-after > :nth-child(2 of .toolbar-divider)) { --mrt-toolbar-after-divs: 2; }
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-after > :nth-child(3 of .toolbar-divider)) { --mrt-toolbar-after-divs: 3; }
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-before > :nth-child(1)) { --mrt-toolbar-before-btns: 1; }
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-before > :nth-child(2)) { --mrt-toolbar-before-btns: 2; }
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-before > :nth-child(3)) { --mrt-toolbar-before-btns: 3; }
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-before > :nth-child(4)) { --mrt-toolbar-before-btns: 4; }
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-before > :nth-child(5)) { --mrt-toolbar-before-btns: 5; }
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-before > :nth-child(6)) { --mrt-toolbar-before-btns: 6; }
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-before > :nth-child(7)) { --mrt-toolbar-before-btns: 7; }
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-before > :nth-child(8)) { --mrt-toolbar-before-btns: 8; }
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-before > :nth-child(9)) { --mrt-toolbar-before-btns: 9; }
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-before > :nth-child(1 of .toolbar-divider)) { --mrt-toolbar-before-divs: 1; }
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-before > :nth-child(2 of .toolbar-divider)) { --mrt-toolbar-before-divs: 2; }
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-before > :nth-child(3 of .toolbar-divider)) { --mrt-toolbar-before-divs: 3; }
+
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-after > .tabbar-workspace-button) {
+  --mrt-toolbar-after-extra: calc(var(--mrt-workspace-button-width) - 30px + 2 * max(0px, var(--densityGap, 0px)))
+}
+#browser:is(.tabs-top, .tabs-bottom):has(.toolbar-tabbar-before > .tabbar-workspace-button) {
+  --mrt-toolbar-before-extra: calc(var(--mrt-workspace-button-width) - 30px + 0 * max(0px, var(--densityGap, 0px)))
+}
+#browser:is(.tabs-top, .tabs-bottom) {
+  --mrt-toolbar-before-width: calc(var(--mrt-toolbar-before-btns, 0) * (30px + max(var(--densityGap), 1px)) -
+     (var(--mrt-toolbar-before-divs, 0) * 14px) + var(--mrt-toolbar-before-extra, 0px) + var(--menuWidth, 0px) + 0px);
+  --mrt-toolbar-after-width: calc(var(--mrt-toolbar-after-btns, 0) * (30px + max(var(--densityGap), 1px)) -
+     (var(--mrt-toolbar-after-divs, 0) * 14px) + var(--mrt-toolbar-after-extra, 0px));
+}
+#browser:is(.tabs-top, .tabs-bottom).horizontal-menu {
+  --menuWidth: 0px;
+}
+
+#browser:is(.tabs-top, .tabs-bottom) .toolbar .toolbar-spacer-panel {
+  min-width: 30px;
+}
+#browser:is(.tabs-top, .tabs-bottom) .toolbar .toolbar-spacer-panel, .toolbar .toolbar-spacer {
+  flex-basis: 30px;
+}
+#browser:is(.tabs-top, .tabs-bottom) #tabs-container {
+  min-height: var(--mrt-tab-height);
+  padding-left: var(--densityGap);
+}
+#browser:is(.tabs-top, .tabs-bottom).horizontal-menu #tabs-container {
+  padding-right: max(var(--densityGap), 2px);
+}
+#browser:is(.tabs-top, .tabs-bottom) .toolbar {
+  z-index: 1;
+}
+#browser:is(.tabs-top, .tabs-bottom) .toolbar-tabbar-before {
+  margin-right: calc(-1 * var(--mrt-toolbar-before-width));
+  margin-top: 0;
+  align-items: flex-start;
+  min-width: 0 !important;
+}
+#browser:is(.tabs-top, .tabs-bottom) .toolbar-tabbar.subcontainer-lock {
+  height: var(--mrt-tab-height);
+  flex-wrap: nowrap;
+  min-width: max-content;
+  flex-grow: 0;
+  margin-left: -59px;
+}
+#browser:is(.tabs-top, .tabs-bottom):not(.density-on) .toolbar-tabbar.subcontainer-lock {
+  margin-bottom: 1px;
+}
+#browser:is(.tabs-top, .tabs-bottom) .tabbar-workspace-button {
+  width: var(--mrt-workspace-button-width);
+}
+#browser:is(.tabs-top, .tabs-bottom) .toolbar .tabbar-workspace-button {
+  height: var(--mrt-tab-height);
+}
+#browser:is(.tabs-top):not(.horizontal-menu) .toolbar-tabbar-before {
+  margin-left: calc(var(--menuWidth) + var(--densityGap));
+}
+#browser:is(.tabs-top, .tabs-bottom) #tabs-container .toolbar-tabbar-after {
+  margin-left: calc(-1 * var(--mrt-toolbar-after-width) - 0px);
+  padding-right: 0;
+  align-items: flex-end;
+}
+#browser:is(.tabs-top):not(.density-on) #tabs-container .toolbar-tabbar-after {
+  margin-bottom: 1px;
+}
+#browser:is(.tabs-bottom) #tabs-container .toolbar-tabbar-after {
+    margin-bottom: 0px;
+}
+#browser:is(.tabs-top).density-on:has(#tabs-subcontainer) #tabs-container .toolbar-tabbar-after {
+    padding-bottom: var(--densityGap);
+}
+#browser:is(.tabs-top) #header .toolbar button {
+  height: var(--mrt-tab-height);
+  min-height: unset;
+}
+#browser:is(.tabs-top) #tabs-subcontainer .toolbar button {
+  height: calc(var(--mrt-tab-height) - 1px);
+}
+#browser:is(.tabs-top, .tabs-bottom).density-on #tabs-subcontainer .toolbar {
+  margin-top: auto;
+  margin-bottom: var(--densityGap);
+}
+/* Accordion tab stacks */
+#browser:is(.tabs-top, .tabs-bottom).accordion-tabs-on .svg-tab-stack {
+  display: none;
+}
+#browser:is(.tabs-top, .tabs-bottom) .tab-strip > .accordion-toggle-arrow {
+  height: fit-content;
+  position: relative;
+  transform: none;
+  height: var(--mrt-tab-height);
+}
+#browser:is(.tabs-top, .tabs-bottom) span:has(.tab-in-accordion, .tab-accordion) .tab-position:before {
+  height: 100%;
+  border: 2px solid var(--stackColorBg, var(--colorBgAlpha));
+  content: "";
+  position: absolute;
+  width: calc(100% + max(3px, var(--densityGap)));
+  z-index: 10;
+  border-right: none;
+  border-left: none;
+  border-radius: 0px;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+#browser:is(.tabs-top, .tabs-bottom) span:has(.tab-in-accordion.tab-first-in-group, .tab-accordion) .tab-position:before {
+  border-left: 2px solid var(--stackColorBg, var(--colorBgAlpha));
+  border-top-left-radius: var(--currentRadius);
+  border-bottom-left-radius: var(--currentRadius);
+}
+#browser:is(.tabs-top, .tabs-bottom) span:has(.tab-in-accordion.tab-last-in-group, .tab-accordion):not(:has(+ .accordion-toggle-arrow)) .tab-position:before {
+  border-right: 2px solid var(--stackColorBg, var(--colorBgAlpha));
+  border-top-right-radius: var(--currentRadius);
+  border-bottom-right-radius: var(--currentRadius);
+  width: calc(100%);
+}
+#browser:is(.tabs-top, .tabs-bottom) span:has(.tab-in-accordion.tab-last-in-group, .tab-accordion):not(:has(+ .accordion-toggle-arrow)) .tab {
+  border-radius: var(--currentRadius);
+}
+#browser:is(.tabs-top, .tabs-bottom) .tab-accordion.active, #browser:is(.tabs-top, .tabs-bottom) .tab-in-accordion.tab-first-in-group {
+  border-top-left-radius: var(--currentRadius);
+  border-bottom-left-radius: var(--currentRadius);
+}
+#browser:is(.tabs-top, .tabs-bottom) .tab-strip .accordion-toggle-arrow {
+  flex-grow: 0;
+  flex-shrink: 0;
+  flex-basis: 16px;
+  min-width: unset;
+  display: flex;
+  margin-left: calc(-16px - max(2px, 2 * var(--densityGap)));
+  border: 2px solid var(--colorBgAlpha) !important;
+  border-left: none !important;
+  justify-content: center;
+  border-top-right-radius: var(--currentRadius);
+  border-bottom-right-radius: var(--currentRadius);
+}
+#browser:is(.tabs-top, .tabs-bottom) .tab-strip .accordion-toggle-arrow.colored {
+  border-color: var(--stackColorBg) !important;
+}
+#browser:is(.tabs-top, .tabs-bottom) .tab-strip .accordion-toggle-arrow.colored:not(:hover) {
+  background: var(--stackColorBg);
+}
+#browser.tabs-top .tab-position.colored .tab-wrapper.accordion .tab,
+#browser.tabs-top .tab-position.colored .tab-wrapper.in-accordion .tab,
+#browser.tabs-bottom .tab-position.colored .tab-wrapper.accordion .tab,
+#browser.tabs-bottom .tab-position.colored .tab-wrapper.in-accordion .tab {
+    box-shadow: 3px 0 0 var(--stackColorBg);
+}
+#browser:is(.tabs-top, .tabs-bottom) .tab-strip .accordion-toggle-arrow.expanded {
+  justify-content: flex-start;
+}
+#browser:is(.tabs-top, .tabs-bottom) .tab-strip span:has(+ .accordion-toggle-arrow) {
+  margin-right: calc(16px + max(2px, var(--densityGap) * 2));
+}
+#browser:is(.tabs-top, .tabs-bottom) #tabs-container .resize {
+  margin-right: 0;
+  max-width: unset !important;
+}
+#browser:is(.tabs-top, .tabs-bottom):not(.density-on) #tabs-container .resize {
+  padding-left: 1px;
+}
+
+/* Disable window dragging while a tab tooltip is visible */
+#browser:is(.tabs-top, .tabs-bottom):has(> #vivaldi-tooltip > .tooltip) > #header,
+#browser:is(.tabs-top, .tabs-bottom):has(> #vivaldi-tooltip > .tooltip) .button-toolbar button,
+#browser:is(.tabs-top, .tabs-bottom):has(> #vivaldi-tooltip > .tooltip) .button-toolbar,
+#browser:is(.tabs-top, .tabs-bottom):has(> #vivaldi-tooltip > .tooltip) #tabs-container .tab-strip:after,
+#browser:is(.tabs-top, .tabs-bottom):has(> #vivaldi-tooltip > .tooltip) .tab-strip {
+  -webkit-app-region: no-drag !important;
+}
+
+/* Scrollbars enabled */
+@container style(--mrt-scrollbars: true) {
+  #browser:is(.tabs-top, .tabs-bottom) .toolbar-tabbar.subcontainer-lock {
+    position: relative;
+    flex-grow: 0;
+    position: relative !important;
+  }
+  #browser:is(.tabs-top, .tabs-bottom) .tab-strip {
+    overflow-x: hidden;
+    overflow-y: auto;
+    max-height: calc((var(--mrt-tab-height) + max(var(--densityGap, 0px), 1px)) * var(--mrt-max-rows));
+    --mrt-toolbar-before-width: 0;
+  }
+  #browser:is(.tabs-top, .tabs-bottom) .tab-strip > :last-child {
+    margin-right: 0 !important;
+  }
+  #browser:is(.tabs-top, .tabs-bottom) .toolbar.toolbar-tabbar-before {
+    margin-right: 0;
+    margin-left: 0;
+  }
+  #browser:is(.tabs-top, .tabs-bottom) :is(.tab-strip, .resize) + .toolbar {
+    margin-left: 0 !important;
+  }
+  #browser:is(.tabs-top, .tabs-bottom) .tabbar-workspace-button {
+    position: relative;
+    align-self: flex-start;
+  }
+  #browser:is(.tabs-top, .tabs-bottom) #tabs-container.top {
+    padding-left: calc(var(--menuWidth) + 1px) !important;
+  }
+  #browser:is(.tabs-top) .tabbar-workspace-button {
+    margin-left: 0 !important;
+  }
+  #browser.tabs-top.density-on .tab-wrapper:after {
+    height: 0 !important;
+  }
+}
+
+/* Full width enabled */
+@container style(--mrt-full-width: true) {
+  #browser:is(.tabs-top, .tabs-bottom) .window-buttongroup {
+    display: none !important;
+  }
+  #browser:is(.tabs-top, .tabs-bottom) #tabs-container.top {
+    padding-right: 1px !important;
+  }
+}
+
+/* Close tab buttons */
+#browser:is(.tabs-top, .tabs-bottom):not(.alt-tabs) .tab .favicon {
+  display: block;
+}
+#browser:is(.tabs-top, .tabs-bottom):not(.alt-tabs) .tab .close {
+  margin-right: 6px;
+}
+@container style(--mrt-tab-close: 1) {
+  #browser:is(.tabs-top, .tabs-bottom):not(.alt-tabs) .tab:is(:hover, .force-hover):not(.button-off, .force-hover, .pinned) .stack-counter {
+    display: none !important;
+  }
+  #browser:is(.tabs-top, .tabs-bottom).alt-tabs .tab:is(:hover, .force-hover):not(.pinned) .favicon {
+    display: none;
+  }
+  #browser:is(.tabs-top, .tabs-bottom) .tab:is(:hover, .force-hover):not(.pinned) .close {
+    display: flex !important;
+  }
+}
+@container style(--mrt-tab-close: 2) {
+  #browser:is(.tabs-top, .tabs-bottom) .tab:not(.pinned) .close {
+    display: flex !important;
+    margin-right: 6px;
+  }
+  #browser:is(.tabs-top, .tabs-bottom) .tab .favicon {
+    display: block;
+  }
 }

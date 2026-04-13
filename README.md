@@ -6,9 +6,9 @@ At this point this repo is just storing whatever version I'm currently using of 
 Code is from here:
 https://forum.vivaldi.net/post/706823
 
-Instructions for how to install multiline-tabs:
-* Open vivaldi://experiments
-* Enable "Allow for using CSS modifications"
+Instructions for how to install multiline-tabs (updated April 2026):
+* vivaldi://flags
+* Enable "Allow CSS modifications"
 * Open Appearance section in settings
 * Choose the folder you want to use
 * Place your CSS files inside it
